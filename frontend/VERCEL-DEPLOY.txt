@@ -26,7 +26,7 @@ Railway / Render / VPS / Supabase Edge غير مناسب لـ Express كامل.
    VITE_DEFAULT_LANG=ar
 
 4) Build
-   • Framework Preset: Vite (يُكتشف غالباً تلقائياً).
+   • في الريبو: vercel.json يضبط framework على Vite (لا تتركه Other لأنه يطلب entrypoint Node).
    • Deploy — بعد النجاح تحصل على رابط مثل https://xxx.vercel.app
 
 5) CORS على الـ backend (إجباري في الإنتاج)

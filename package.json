@@ -1,0 +1,8 @@
+{
+  "name": "hr-w",
+  "private": true,
+  "description": "Monorepo root: Vercel runs Vite from here; app lives in /frontend",
+  "devDependencies": {
+    "vite": "^5.4.21"
+  }
+}
