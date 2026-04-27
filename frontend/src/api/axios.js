@@ -1,8 +1,18 @@
 import axios from 'axios';
 import { logSuccessfulMutation } from '../utils/activityLog';
 
+const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api').trim();
+
+if (import.meta.env.PROD && (apiBase === '/api' || apiBase.startsWith('/'))) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[HR API] VITE_API_BASE_URL غير مطلق في الإنتاج — الطلبات تذهب لنفس نطاق الواجهة (/api/...) فيعطي 404 على Vercel. '
+    + 'أضف في Vercel → Environment Variables: VITE_API_BASE_URL=https://عنوان-الـbackend/api ثم Redeploy.',
+  );
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: apiBase,
   withCredentials: true,
 });
 
