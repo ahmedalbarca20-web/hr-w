@@ -29,6 +29,16 @@ Railway / Render / VPS / Supabase Edge غير مناسب لـ Express كامل.
    VITE_APP_NAME
    VITE_DEFAULT_LANG=ar
 
+   ── إكمال النشر على Vercel (لوحة المشروع) ──
+   ① Settings → Environment Variables → Add New
+   ② Key بالضبط:  VITE_API_BASE_URL
+      Value:       https://عنوان-سيرفر-الـExpress-المنشور/api
+      (مثال شكل: https://hr-api.onrender.com/api — استبدل بنطاقك)
+   ③ Environments: Production و Preview (أو حسب حاجتك) → Save
+   ④ Deployments → آخر نشر → ⋯ → Redeploy (حتى يُحقَن المتغير في build الـ Vite)
+   ⚠ لا تضع DATABASE_URL أو DIRECT_URL أو JWT هنا — هذه لسيرفر الـ backend فقط (.env على
+     Railway/Render/VPS)، وليس لمشروع الواجهة على Vercel.
+
 4) Build
    • vercel.json في الجذر: framework = Vite، install = npm install، build = npm run build،
      output = frontend/dist (لا تختر «Other» أو Node في لوحة Vercel).
