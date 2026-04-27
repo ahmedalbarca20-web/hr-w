@@ -86,6 +86,10 @@ Railway / Render / VPS / Supabase Edge غير مناسب لـ Express كامل.
    ضع كل الروابط التي يفتح منها المستخدم الواجهة (إنتاج + معاينة إن احتجت).
    بدونها المتصفح يمنع الطلبات (خطأ CORS).
 
+   إن ظهر خطأ: Allow-Origin لا يجوز أن يكون '*' مع credentials — الـ backend يعيد أصلًا صريحًا من القائمة أعلاه.
+   لروابط معاينة Vercel الطويلة (*.vercel.app) إما تضيفها كلها في CLIENT_URL مفصولة بفاصلة، أو على الـ backend فقط:
+   ALLOW_VERCEL_PREVIEW_ORIGINS=1  (يسمح بأي https://*.vercel.app — أوسع من القائمة اليدوية).
+
 6) الكوكيز / تسجيل الدخول
    الواجهة تستخدم withCredentials. في الإنتاج الـ backend يضبط SameSite للكوكي
    تلقائياً على none + Secure عندما تكون الواجهة على نطاق مختلف عن الـ API (مثل Vercel).

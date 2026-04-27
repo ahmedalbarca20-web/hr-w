@@ -25,21 +25,50 @@ const app = express();
 app.use(helmet());
 
 // ── CORS ──────────────────────────────────────────────────────────────────
+// With credentials: true, the browser rejects Access-Control-Allow-Origin: *.
+// Always echo a concrete origin string — never cb(null, true) (ambiguous with some proxies).
 const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
-  .split(',') // support multiple origins comma-separated
-  .map((o) => o.trim());
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const vercelPreviewOk = () => {
+  const v = (process.env.ALLOW_VERCEL_PREVIEW_ORIGINS || '').toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+};
+
+/** HTTPS only — Vercel production + preview hosts. */
+const isVercelAppOrigin = (o) => /^https:\/\/.+\.vercel\.app$/i.test(o || '');
+
+function corsOriginDelegate(incoming, cb) {
+  const isProd = process.env.NODE_ENV === 'production';
+
+  if (!isProd) {
+    const devOrigin = incoming || allowedOrigins[0] || 'http://localhost:5173';
+    return cb(null, devOrigin);
+  }
+
+  if (!incoming) {
+    return cb(null, false);
+  }
+
+  if (allowedOrigins.includes(incoming)) {
+    return cb(null, incoming);
+  }
+
+  if (vercelPreviewOk() && isVercelAppOrigin(incoming)) {
+    return cb(null, incoming);
+  }
+
+  cb(new Error(`CORS: origin '${incoming}' is not allowed`));
+}
 
 app.use(cors({
-  origin: (origin, cb) => {
-    // In development, allow all origins (Vite port may change: 3000/3001/etc.)
-    if (process.env.NODE_ENV !== 'production') return cb(null, true);
-    // Allow server-to-server calls (no origin) and whitelisted origins
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-    cb(new Error(`CORS: origin '${origin}' is not allowed`));
-  },
-  credentials   : true,   // needed for httpOnly cookie exchange
-  methods       : ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin          : corsOriginDelegate,
+  credentials     : true, // httpOnly cookie exchange — requires explicit Allow-Origin
+  methods         : ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders    : ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204,
 }));
 
 // ── Request parsing ─────────────────────────────────────────────────────────
