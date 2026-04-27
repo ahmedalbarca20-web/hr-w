@@ -1,0 +1,34 @@
+═══════════════════════════════════════════════════════════════════
+  HR — رفع قاعدة البيانات على Supabase + تشغيل الـ backend
+═══════════════════════════════════════════════════════════════════
+
+(1) في Supabase: Project → SQL Editor → New query
+    • افتح الملف:  backend/database/schema.postgresql.sql
+    • انسخ المحتوى كاملاً والصقه في المحرّر ثم Run.
+    • تحذير: السكربت يحذف الجداول الموجودة بنفس الأسماء ثم يعيد إنشاءها.
+
+(2) في Supabase: Project Settings → Database
+    • انسخ "Connection string" بنمط URI (Session mode أو Transaction حسب تفضيلك).
+    • كلمة مرور قاعدة البيانات = Database password التي ضبطتها عند إنشاء المشروع.
+
+(3) على جهازك (مجلد backend):
+    npm install
+
+(4) أنشئ ملف .env:
+    • انسخ:  database/supabase.env.example  →  backend/.env
+    • عدّل DATABASE_URL والقيم الأمنية (JWT_*).
+
+(5) شغّل الخادم:
+    npm run start
+    أو للتطوير: npm run dev
+
+(6) الواجهة الأمامية (frontend): في .env أو .env.production عيّن
+    VITE_API_URL=https://عنوان-الخادم-الذي-يشغّل-الـAPI
+
+ملاحظات
+────────
+• الـ backend يقرأ DB_DIALECT=postgres و DATABASE_URL تلقائياً مع SSL مناسب لـ Supabase.
+• لتعطيل SSL محلياً: DB_SSL=false
+• لا تشغّل sequelize.sync({ force: true }) على الإنتاج — الجداول تُنشأ من ملف SQL.
+
+═══════════════════════════════════════════════════════════════════

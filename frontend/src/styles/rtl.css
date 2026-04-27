@@ -1,0 +1,8 @@
+/* RTL-specific overrides — imported when lang = ar */
+[dir="rtl"] .sidebar       { left: auto; right: 0; }
+[dir="rtl"] .main-content  { margin-left: 0; margin-right: 260px; }
+[dir="rtl"] .nav-link      { flex-direction: row-reverse; }
+[dir="rtl"] .th            { text-align: right; }
+[dir="rtl"] .stat-icon     { left: auto; right: 1rem; }
+[dir="rtl"] .sidebar-brand { flex-direction: row-reverse; }
+

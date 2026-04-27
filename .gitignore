@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+
+# Build outputs
+dist/
+build/
+
+# Uploads (keep folder, not files)
+uploads/*
+!uploads/.gitkeep
+
+# Logs
+logs/*.log
+backend/logs/*.log
+
+# Local SQLite dev DBs (do not commit)
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+

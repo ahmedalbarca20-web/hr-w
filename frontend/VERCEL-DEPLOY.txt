@@ -1,0 +1,51 @@
+═══════════════════════════════════════════════════════════════════
+  نشر الواجهة (React + Vite) على Vercel
+═══════════════════════════════════════════════════════════════════
+
+الـ API (Express) لا يعمل على Vercel كخادم دائم بنفس الطريقة؛ انشره على
+Railway / Render / VPS / Supabase Edge غير مناسب لـ Express كامل.
+هذا الملف يخص الواجهة فقط — عنوان الـ API يبقى متغير بيئة.
+
+───────────────────────────────────────────────────────────────────
+1) إعداد GitHub
+   • ارفع المشروع إلى مستودع Git (أو اربط المجلد المحلي من Vercel Desktop).
+
+2) مشروع جديد في Vercel
+   • vercel.com → Add New → Project → استورد الريبو.
+   • Root Directory: اختر المجلد  frontend  (مهم إذا الريبو يحتوي backend + frontend).
+
+3) متغيرات البيئة (Vercel → Project → Settings → Environment Variables)
+   أضف على الأقل:
+
+   VITE_API_BASE_URL = https://عنوان-خادمك-الحقيقي.com/api
+   (نفس الرابط الذي يشغّل الـ backend؛ مع /api في النهاية)
+
+   اختياري:
+   VITE_APP_NAME
+   VITE_DEFAULT_LANG=ar
+
+4) Build
+   • Framework Preset: Vite (يُكتشف غالباً تلقائياً).
+   • Deploy — بعد النجاح تحصل على رابط مثل https://xxx.vercel.app
+
+5) CORS على الـ backend (إجباري في الإنتاج)
+   في ملف .env للخادم (ليس Vercel):
+
+   NODE_ENV=production
+   CLIENT_URL=https://xxx.vercel.app,https://xxx-git-main-xxx.vercel.app
+
+   ضع كل الروابط التي يفتح منها المستخدم الواجهة (إنتاج + معاينة إن احتجت).
+   بدونها المتصفح يمنع الطلبات (خطأ CORS).
+
+6) الكوكيز / تسجيل الدخول
+   الواجهة تستخدم withCredentials مع الـ API؛ لازم الـ backend يرسل
+   SameSite مناسب والـ cookie على نفس النطاق أو إعدادات cross-site.
+   إذا واجهت مشكلة تسجيل دخول بعد النشر، راجع إعدادات الـ cookie في الخادم
+   ونطاق CLIENT_URL.
+
+7) اختبار محلي يشبه الإنتاج
+   cd frontend
+   npm run build && npm run preview
+   مع VITE_API_BASE_URL يشير لسيرفر حقيقي أو ngrok.
+
+═══════════════════════════════════════════════════════════════════

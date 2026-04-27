@@ -1,0 +1,28 @@
+:root {
+  --color-brand:        #9c27b0;
+  --color-brand-dark:   #7b1fa2;
+  --color-brand-light:  #ce93d8;
+
+  --color-sidebar-from: #1a2035;
+  --color-sidebar-to:   #1c1c2e;
+
+  --color-info:     #00bcd4;
+  --color-success:  #4caf50;
+  --color-warning:  #ff9800;
+  --color-danger:   #f44336;
+
+  --shadow-card:    0 1px 4px 0 rgba(0,0,0,.14);
+  --shadow-icon:    0 4px 20px 0 rgba(0,0,0,.14);
+
+  --radius-card:    6px;
+  --sidebar-width:  260px;
+  --header-height:  70px;
+
+  --font-sans:  'Inter', sans-serif;
+  --font-cairo: 'Cairo', sans-serif;
+}
+
+[dir="rtl"] {
+  --font-sans: 'Cairo', sans-serif;
+}
+
