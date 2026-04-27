@@ -18,12 +18,17 @@
     • انسخ:  database/supabase.env.example  →  backend/.env
     • عدّل DATABASE_URL والقيم الأمنية (JWT_*).
 
-(5) شغّل الخادم:
+(5) سوبر أدمن المنصّة (مرة واحدة بعد SQL):
+    في backend/.env عيّن SUPER_ADMIN_EMAIL و SUPER_ADMIN_PASSWORD ثم من مجلد backend:
+      node database/seed.super-admin.js
+    (الافتراضي في السكربت للبريد: ahmedalbarca20@gmail.com — كلمة السر من .env فقط.)
+
+(6) شغّل الخادم:
     npm run start
     أو للتطوير: npm run dev
 
-(6) الواجهة الأمامية (frontend): في .env أو .env.production عيّن
-    VITE_API_URL=https://عنوان-الخادم-الذي-يشغّل-الـAPI
+(7) الواجهة الأمامية (frontend): في .env أو .env.production عيّن
+    VITE_API_BASE_URL=https://عنوان-الخادم/api
 
 ملاحظات
 ────────

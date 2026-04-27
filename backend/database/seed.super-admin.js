@@ -7,9 +7,10 @@
  * Usage:
  *   node database/seed.super-admin.js
  *
- * Default credentials:
- *   Email    : superadmin@hr.com
- *   Password : Super@1234
+ * Default email (override with SUPER_ADMIN_EMAIL):
+ *   ahmedalbarca20@gmail.com
+ * Password: set SUPER_ADMIN_PASSWORD in backend/.env — do not commit real passwords.
+ * Dev fallback only: Super@1234
  */
 
 'use strict';
@@ -20,7 +21,7 @@ const bcrypt        = require('bcryptjs');
 const { sequelize } = require('../src/config/db');
 const { QueryTypes } = require('sequelize');
 
-const EMAIL    = process.env.SUPER_ADMIN_EMAIL    || 'superadmin@hr.com';
+const EMAIL    = process.env.SUPER_ADMIN_EMAIL    || 'ahmedalbarca20@gmail.com';
 const PASSWORD = process.env.SUPER_ADMIN_PASSWORD || 'Super@1234';
 const ROUNDS   = parseInt(process.env.BCRYPT_ROUNDS || '12', 10);
 
