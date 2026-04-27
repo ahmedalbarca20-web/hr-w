@@ -1,6 +1,15 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
+  // Absolute paths: Vite may run with cwd = monorepo root (e.g. Vercel); relative globs would miss ./frontend.
+  content: [
+    path.join(__dirname, 'index.html'),
+    path.join(__dirname, 'src/**/*.{js,jsx,ts,tsx}'),
+  ],
   darkMode: 'class',
   theme: {
     extend: {
