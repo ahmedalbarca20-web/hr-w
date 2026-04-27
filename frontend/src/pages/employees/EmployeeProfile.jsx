@@ -8,12 +8,19 @@ import { listAttendance, createAttendanceRequest, listAttendanceRequests } from 
 import { listAnnouncements } from '../../api/announcement.api';
 import Alert from '../../components/common/Alert';
 import { useCurrency } from '../../context/CurrencyContext';
+import { toErrorString } from '../../utils/helpers';
 
 function InfoRow({ label, value }) {
+  const display =
+    value == null || value === ''
+      ? '—'
+      : typeof value === 'object'
+        ? toErrorString(value.name ?? value.name_ar ?? value, '—')
+        : String(value);
   return (
     <div className="flex justify-between py-2 border-b last:border-0">
       <span className="text-gray-500 text-sm">{label}</span>
-      <span className="font-medium text-sm">{value || '—'}</span>
+      <span className="font-medium text-sm">{display}</span>
     </div>
   );
 }

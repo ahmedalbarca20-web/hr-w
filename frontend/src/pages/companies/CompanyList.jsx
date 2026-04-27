@@ -6,6 +6,7 @@ import {
   COMPANY_TIMEZONE_OPTIONS,
   COMPANY_CURRENCY_OPTIONS,
 } from '../../lib/regionDefaults';
+import { toErrorString } from '../../utils/helpers';
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace('/api', '');
 
@@ -154,7 +155,7 @@ function CompanyModal({ company, onClose, onSaved }) {
       }
       onSaved();
     } catch (err) {
-      setError(err.response?.data?.error || 'حدث خطأ أثناء الحفظ');
+      setError(toErrorString(err.response?.data?.error ?? err.response?.data?.message, 'حدث خطأ أثناء الحفظ'));
     } finally {
       setSaving(false);
       setUploading(false);
@@ -176,7 +177,11 @@ function CompanyModal({ company, onClose, onSaved }) {
         </div>
 
         <form onSubmit={submit} className="overflow-y-auto p-6 space-y-5">
-          {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+              {toErrorString(error, '')}
+            </p>
+          )}
 
           {/* Basic info */}
           <div>

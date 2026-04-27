@@ -11,13 +11,14 @@ import {
 } from '../../api/device.api';
 import { listDepartments } from '../../api/department.api';
 import { applyZkSnapshotToForm, unwrapZkPayload, zkFailureMessage } from '../../lib/deviceZk';
+import { toErrorString } from '../../utils/helpers';
 
 function Field({ label, children, error }) {
   return (
     <div>
       <label className="label">{label}</label>
       {children}
-      {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+      {error && <p className="mt-1 text-xs text-danger">{toErrorString(error, '')}</p>}
     </div>
   );
 }
@@ -270,7 +271,7 @@ export default function DeviceForm() {
         }
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Save failed');
+      setError(toErrorString(err.response?.data?.error ?? err.response?.data?.message, 'Save failed'));
     } finally {
       setSaving(false);
       saveLockRef.current = false;
@@ -279,7 +280,11 @@ export default function DeviceForm() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-5">
-      {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{error}</div>}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
+          {toErrorString(error, '')}
+        </div>
+      )}
       {loadingInit && <div className="flex items-center justify-center h-32 text-gray-400"><span className="material-icons-round animate-spin text-3xl">sync</span></div>}
       {/* Header card */}
       <div className="bg-white rounded-xl shadow-card overflow-hidden">

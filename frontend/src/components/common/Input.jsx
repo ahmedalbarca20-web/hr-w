@@ -1,5 +1,6 @@
 import { forwardRef } from 'react';
 import clsx from 'clsx';
+import { toErrorString } from '../../utils/helpers';
 
 const Input = forwardRef(function Input(
   { label, error, className, id, ...props }, ref
@@ -20,7 +21,7 @@ const Input = forwardRef(function Input(
         )}
         {...props}
       />
-      {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+      {error && <p className="mt-1 text-xs text-danger">{toErrorString(error, '')}</p>}
     </div>
   );
 });

@@ -4,6 +4,26 @@ import { SkeletonRow } from './Loader';
 import Pagination from './Pagination';
 import * as XLSX from 'xlsx';
 
+/** Default cell text when column has no `render` — avoids React #31 on objects. */
+function cellDisplayValue(val) {
+  if (val == null || val === '') return '—';
+  if (typeof val === 'string' || typeof val === 'number') return val;
+  if (typeof val === 'boolean') return val ? '✓' : '—';
+  if (typeof val === 'object') {
+    if (typeof val.name === 'string' && val.name) return val.name;
+    if (typeof val.name_ar === 'string' && val.name_ar) return val.name_ar;
+    if (typeof val.title === 'string' && val.title) return val.title;
+    if (typeof val.email === 'string' && val.email) return val.email;
+    if (typeof val.label === 'string' && val.label) return val.label;
+    try {
+      return JSON.stringify(val);
+    } catch {
+      return '—';
+    }
+  }
+  return String(val);
+}
+
 /**
  * Generic table component.
  * @param {Array} columns  - [{ key, label, render? }]
@@ -160,7 +180,7 @@ export default function Table({
                         onClick={cellSort}
                         title={cellSort ? t('common.click_to_sort', 'انقر للترتيب') : undefined}
                       >
-                        {col.render ? col.render(row) : row[col.key]}
+                        {col.render ? col.render(row) : cellDisplayValue(row[col.key])}
                       </td>
                     );
                   })}
