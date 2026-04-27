@@ -22,6 +22,8 @@ Railway / Render / VPS / Supabase Edge غير مناسب لـ Express كامل.
 
    VITE_API_BASE_URL = https://عنوان-خادمك-الحقيقي.com/api
    (نفس الرابط الذي يشغّل الـ backend؛ مع /api في النهاية)
+   • بدون هذا الرابط، الطلبات تذهب لنطاق Vercel نفسه → لن يعمل تسجيل الدخول (405/404).
+     vercel.json لا يعيد كتابة /api/* إلى SPA لتفادي 405 الخادئة على POST.
 
    اختياري:
    VITE_APP_NAME
