@@ -72,6 +72,9 @@ Railway / Render / VPS / Supabase Edge غير مناسب لـ Express كامل.
 4) Build
    • vercel.json في الجذر: framework = Vite، install = npm install، build = npm run build،
      output = frontend/dist (لا تختر «Other» أو Node في لوحة Vercel).
+   • على Vercel أثناء npm run build: إن كان VITE_API_BASE_URL فارغاً أو نسبياً (/api)
+     أو يشير لـ localhost، يفشل البناء برسالة من vite.config.mjs (أفضل من نشر واجهة
+     معطوبة). لتجاوز غير مستحسن فقط: SKIP_VERCEL_API_CHECK=1 في Environment Variables.
    • Deploy — بعد النجاح تحصل على رابط مثل https://xxx.vercel.app
 
 5) CORS على الـ backend (إجباري في الإنتاج)
