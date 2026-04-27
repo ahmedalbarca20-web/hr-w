@@ -78,22 +78,37 @@ const resetPasswordSchema = z.object({
 const REFRESH_COOKIE_NAME = 'hr_refresh_token';
 
 /**
+ * Refresh cookie SameSite/Secure: SPA on another host (e.g. Vercel → API on Railway)
+ * needs `none` + `Secure` or the browser will not send the cookie on credentialed fetch.
+ * Same-origin production (one domain behind Nginx): set REFRESH_COOKIE_SAMESITE=strict.
+ */
+const refreshCookieBase = () => {
+  const raw = String(process.env.REFRESH_COOKIE_SAMESITE || '').trim().toLowerCase();
+  const sameSite = ['strict', 'lax', 'none'].includes(raw)
+    ? raw
+    : process.env.NODE_ENV === 'production'
+      ? 'none'
+      : 'lax';
+  const secureOff = String(process.env.REFRESH_COOKIE_SECURE || '').toLowerCase() === 'false';
+  const secure = !secureOff && (sameSite === 'none' || process.env.NODE_ENV === 'production');
+  return { httpOnly: true, path: '/', sameSite, secure };
+};
+
+/**
  * Set httpOnly refresh-token cookie.
  * @param {import('express').Response} res
  * @param {string} token
  */
 const setRefreshCookie = (res, token) => {
   res.cookie(REFRESH_COOKIE_NAME, token, {
-    httpOnly : true,
-    secure   : process.env.NODE_ENV === 'production',
-    sameSite : 'strict',
-    maxAge   : REFRESH_COOKIE_MS,
+    ...refreshCookieBase(),
+    maxAge: REFRESH_COOKIE_MS,
   });
 };
 
 /** Clear the refresh cookie on logout. */
 const clearRefreshCookie = (res) => {
-  res.clearCookie(REFRESH_COOKIE_NAME, { httpOnly: true, sameSite: 'strict' });
+  res.clearCookie(REFRESH_COOKIE_NAME, refreshCookieBase());
 };
 
 // ── Handlers ───────────────────────────────────────────────────────────────

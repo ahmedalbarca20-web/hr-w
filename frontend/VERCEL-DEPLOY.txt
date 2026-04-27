@@ -12,7 +12,8 @@ Railway / Render / VPS / Supabase Edge غير مناسب لـ Express كامل.
 
 2) مشروع جديد في Vercel
    • vercel.com → Add New → Project → استورد الريبو.
-   • Root Directory: اختر المجلد  frontend  (مهم إذا الريبو يحتوي backend + frontend).
+   • Root Directory: اتركه فارغاً (يُستخدم vercel.json في جذر الريبو ويبني frontend تلقائياً)،
+     أو اضبطه على  frontend  إن أردت؛ في الحالة الثانية يُستخدم frontend/vercel.json.
 
 3) متغيرات البيئة (Vercel → Project → Settings → Environment Variables)
    أضف على الأقل:
@@ -38,10 +39,10 @@ Railway / Render / VPS / Supabase Edge غير مناسب لـ Express كامل.
    بدونها المتصفح يمنع الطلبات (خطأ CORS).
 
 6) الكوكيز / تسجيل الدخول
-   الواجهة تستخدم withCredentials مع الـ API؛ لازم الـ backend يرسل
-   SameSite مناسب والـ cookie على نفس النطاق أو إعدادات cross-site.
-   إذا واجهت مشكلة تسجيل دخول بعد النشر، راجع إعدادات الـ cookie في الخادم
-   ونطاق CLIENT_URL.
+   الواجهة تستخدم withCredentials. في الإنتاج الـ backend يضبط SameSite للكوكي
+   تلقائياً على none + Secure عندما تكون الواجهة على نطاق مختلف عن الـ API (مثل Vercel).
+   إن كان كل شيء خلف نطاق واحد (Nginx): ضع في .env للخادم REFRESH_COOKIE_SAMESITE=strict
+   راجع أيضاً CLIENT_URL لـ CORS.
 
 7) اختبار محلي يشبه الإنتاج
    cd frontend
