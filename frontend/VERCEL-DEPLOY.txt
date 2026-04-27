@@ -12,8 +12,10 @@ Railway / Render / VPS / Supabase Edge غير مناسب لـ Express كامل.
 
 2) مشروع جديد في Vercel
    • vercel.com → Add New → Project → استورد الريبو.
-   • Root Directory: اتركه فارغاً (يُستخدم vercel.json في جذر الريبو ويبني frontend تلقائياً)،
-     أو اضبطه على  frontend  إن أردت؛ في الحالة الثانية يُستخدم frontend/vercel.json.
+   • Root Directory: اتركه فارغاً (جذر الريبو). الإعداد الحالي يعتمد npm workspaces
+     (package.json في الجذر + مجلد frontend) و build واحد من الجذر.
+   • في Settings → General: إن وُجد Override لـ Framework أو Build Command يتعارض مع
+     الريبو، عطّله أو اجعل Framework = Vite تلقائياً من الملف.
 
 3) متغيرات البيئة (Vercel → Project → Settings → Environment Variables)
    أضف على الأقل:
@@ -26,7 +28,8 @@ Railway / Render / VPS / Supabase Edge غير مناسب لـ Express كامل.
    VITE_DEFAULT_LANG=ar
 
 4) Build
-   • في الريبو: vercel.json يضبط framework على Vite (لا تتركه Other لأنه يطلب entrypoint Node).
+   • vercel.json في الجذر: framework = Vite، install = npm install، build = npm run build،
+     output = frontend/dist (لا تختر «Other» أو Node في لوحة Vercel).
    • Deploy — بعد النجاح تحصل على رابط مثل https://xxx.vercel.app
 
 5) CORS على الـ backend (إجباري في الإنتاج)

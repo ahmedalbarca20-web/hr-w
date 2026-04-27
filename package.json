@@ -1,8 +1,12 @@
 {
   "name": "hr-w",
   "private": true,
-  "description": "Monorepo root: Vercel runs Vite from here; app lives in /frontend",
-  "devDependencies": {
-    "vite": "^5.4.21"
+  "description": "Monorepo root: workspace includes frontend for Vercel (Vite from repo root).",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "build": "vite build --config vite.config.mjs",
+    "dev": "vite dev --config vite.config.mjs --host 0.0.0.0"
   }
 }
