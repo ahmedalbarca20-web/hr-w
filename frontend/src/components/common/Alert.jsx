@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { toErrorString } from '../../utils/helpers';
 
 const STYLES = {
   success: 'bg-success/10 border-success text-green-800',
@@ -15,11 +16,12 @@ const ICONS = {
 };
 
 export default function Alert({ type = 'info', message, onClose }) {
-  if (!message) return null;
+  const text = toErrorString(message, '');
+  if (!text) return null;
   return (
     <div className={clsx('flex items-start gap-3 border rounded-lg px-4 py-3 text-sm', STYLES[type])}>
       <span className="material-icons-round text-xl flex-shrink-0">{ICONS[type]}</span>
-      <span className="flex-1">{message}</span>
+      <span className="flex-1">{text}</span>
       {onClose && (
         <button onClick={onClose} className="material-icons-round text-xl opacity-60 hover:opacity-100">
           close

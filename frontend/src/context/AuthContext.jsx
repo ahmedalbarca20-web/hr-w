@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as authApi from '../api/auth.api';
+import { toErrorString } from '../utils/helpers';
 
 const AuthContext = createContext(null);
 
@@ -101,7 +102,8 @@ export function AuthProvider({ children }) {
       if (!ok) return { ok: false, msg: 'Login response invalid' };
       return { ok: true };
     } catch (err) {
-      return { ok: false, msg: err.response?.data?.error || err.response?.data?.message || 'Login failed' };
+      const raw = err.response?.data?.error ?? err.response?.data?.message ?? err.message;
+      return { ok: false, msg: toErrorString(raw, 'Login failed') };
     } finally {
       setLoading(false);
     }
@@ -115,7 +117,8 @@ export function AuthProvider({ children }) {
       if (!ok) return { ok: false, msg: 'Login response invalid' };
       return { ok: true };
     } catch (err) {
-      return { ok: false, msg: err.response?.data?.error || err.response?.data?.message || 'Login failed' };
+      const raw = err.response?.data?.error ?? err.response?.data?.message ?? err.message;
+      return { ok: false, msg: toErrorString(raw, 'Login failed') };
     } finally {
       setLoading(false);
     }
