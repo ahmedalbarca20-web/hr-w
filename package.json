@@ -2,6 +2,9 @@
   "name": "hr-w",
   "private": true,
   "description": "Monorepo root: workspace includes frontend for Vercel (Vite from repo root).",
+  "engines": {
+    "node": "20.x"
+  },
   "workspaces": [
     "frontend"
   ],
