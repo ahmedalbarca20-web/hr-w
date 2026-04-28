@@ -28,6 +28,6 @@ jobs:
         if: always()
         uses: vercel/repository-dispatch/actions/status@v1
         with:
-          name: Vercel - hr-w: hr
+          name: "Vercel - hr-w: hr"
           state: ${{ job.status }}
           token: ${{ secrets.GITHUB_TOKEN }}
