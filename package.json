@@ -6,10 +6,15 @@
     "node": "20.x"
   },
   "workspaces": [
-    "frontend"
+    "frontend",
+    "backend"
   ],
   "scripts": {
     "build": "vite build --config vite.config.mjs",
     "dev": "vite dev --config vite.config.mjs --host 0.0.0.0"
+  },
+  "devDependencies": {
+    "dotenv": "^17.4.2",
+    "prisma": "^7.8.0"
   }
 }
