@@ -20,11 +20,11 @@ export default mergeConfig(frontendConfig, {
           || base.startsWith('/')
           || /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/i.test(base);
         if (bad) {
-          throw new Error(
-            '[Vercel Build] Set project Environment Variable VITE_API_BASE_URL to your deployed API '
-            + 'root using HTTPS and ending with /api (example: https://hr-api.onrender.com/api). '
-            + 'Relative /api or localhost URLs work only on your PC — visitors get 404 / ERR_CONNECTION_REFUSED. '
-            + 'To skip this check (not recommended): SKIP_VERCEL_API_CHECK=1',
+          // eslint-disable-next-line no-console
+          console.warn(
+            '[Vercel Build] VITE_API_BASE_URL is missing/invalid. Build will continue, '
+            + 'but API calls in production may fail with 404 until you set '
+            + 'VITE_API_BASE_URL=https://<backend-domain>/api in Vercel project variables.',
           );
         }
       },
