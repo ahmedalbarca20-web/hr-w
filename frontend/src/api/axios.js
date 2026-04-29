@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { logSuccessfulMutation } from '../utils/activityLog';
+import { HR_ACTIVE_COMPANY_KEY } from '../utils/tenantScope';
 
 const rawApiBase = String(import.meta.env.VITE_API_BASE_URL || '').trim();
 const isBrowser = typeof window !== 'undefined';
@@ -42,7 +43,7 @@ function superAdminTenantCompanyId() {
     const noCompany = u.company_id == null || u.company_id === '';
     const isSa = Boolean(u.is_super_admin) || u.role === 'SUPER_ADMIN';
     if (!noCompany || !isSa) return null;
-    const fromLs = Number(localStorage.getItem('hr_active_company_id'));
+    const fromLs = Number(localStorage.getItem(HR_ACTIVE_COMPANY_KEY));
     if (Number.isInteger(fromLs) && fromLs > 0) return fromLs;
     return null;
   } catch {
@@ -159,6 +160,7 @@ api.interceptors.response.use(
         processQueue(refreshErr);
         localStorage.removeItem('access_token');
         localStorage.removeItem('user');
+        localStorage.removeItem(HR_ACTIVE_COMPANY_KEY);
         // Use React Router navigation (no full reload) via event
         window.dispatchEvent(new Event('auth:logout'));
         return Promise.reject(refreshErr);

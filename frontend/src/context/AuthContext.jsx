@@ -1,7 +1,35 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as authApi from '../api/auth.api';
+import { listCompanies } from '../api/company.api';
 import { toErrorString } from '../utils/helpers';
+import {
+  HR_ACTIVE_COMPANY_KEY,
+  HR_ACTIVE_TENANT_EVENT,
+  isSuperAdminUser,
+} from '../utils/tenantScope';
+
+async function ensureSuperAdminTenantSelection() {
+  try {
+    const raw = localStorage.getItem('user');
+    if (!raw) return;
+    const u = JSON.parse(raw);
+    if (!isSuperAdminUser(u)) return;
+    const own = Number(u.company_id);
+    if (Number.isInteger(own) && own > 0) return;
+    const cur = Number(localStorage.getItem(HR_ACTIVE_COMPANY_KEY));
+    if (Number.isInteger(cur) && cur > 0) return;
+    const { data } = await listCompanies({ limit: 100 });
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    const active = rows.find((c) => Number(c.is_active) === 1) || rows[0];
+    if (active?.id) {
+      localStorage.setItem(HR_ACTIVE_COMPANY_KEY, String(active.id));
+      window.dispatchEvent(new Event(HR_ACTIVE_TENANT_EVENT));
+    }
+  } catch {
+    /* non-fatal: super admin can open Companies and work without auto-pick */
+  }
+}
 
 const AuthContext = createContext(null);
 
@@ -26,7 +54,7 @@ export function AuthProvider({ children }) {
       return;
     }
     authApi.me()
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         const raw = data.data;
         if (!raw) return;
         // Normalize: /auth/me returns full Sequelize object; we need the same
@@ -48,11 +76,13 @@ export function AuthProvider({ children }) {
         };
         localStorage.setItem('user', JSON.stringify(normalized));
         setUser(normalized);
+        await ensureSuperAdminTenantSelection();
       })
       .catch(() => {
         // Refresh already tried by axios interceptor — if we still fail, clear out
         localStorage.removeItem('access_token');
         localStorage.removeItem('user');
+        localStorage.removeItem(HR_ACTIVE_COMPANY_KEY);
         setUser(null);
       })
       .finally(() => {
@@ -100,6 +130,7 @@ export function AuthProvider({ children }) {
       const { data } = await authApi.login({ email, password, ...extras });
       const ok = persistSession(data.data);
       if (!ok) return { ok: false, msg: 'Login response invalid' };
+      await ensureSuperAdminTenantSelection();
       return { ok: true };
     } catch (err) {
       const raw = err.response?.data?.error ?? err.response?.data?.message ?? err.message;
@@ -115,6 +146,7 @@ export function AuthProvider({ children }) {
       const { data } = await authApi.employeeLogin({ employee_code, password, company_code: company_code || null });
       const ok = persistSession(data.data);
       if (!ok) return { ok: false, msg: 'Login response invalid' };
+      await ensureSuperAdminTenantSelection();
       return { ok: true };
     } catch (err) {
       const raw = err.response?.data?.error ?? err.response?.data?.message ?? err.message;
@@ -128,6 +160,7 @@ export function AuthProvider({ children }) {
     try { await authApi.logout(); } catch {}
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
+    localStorage.removeItem(HR_ACTIVE_COMPANY_KEY);
     setUser(null);
   }, []);
 

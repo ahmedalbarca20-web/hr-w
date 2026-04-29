@@ -8,11 +8,14 @@ import { createEmployee, updateEmployee, listDepts } from '../../api/employee.ap
 import { listShifts } from '../../api/shift.api';
 import { listLeaveTypes, listLeaveBalances } from '../../api/leave.api';
 import { useAuth } from '../../context/AuthContext';
+import { useTenantCompanyId } from '../../hooks/useTenantCompanyId';
+import { isSuperAdminUser } from '../../utils/tenantScope';
 
 export default function EmployeeForm({ initial, onDone, onCancel }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user, hasFeature } = useAuth();
+  const companyId = useTenantCompanyId(user);
   const [depts, setDepts]   = useState([]);
   const [shifts, setShifts] = useState([]);
   const [error, setError]   = useState('');
@@ -45,6 +48,11 @@ export default function EmployeeForm({ initial, onDone, onCancel }) {
   });
 
   useEffect(() => {
+    if (!companyId) {
+      setDepts([]);
+      setShifts([]);
+      return;
+    }
     listDepts({ page: 1, limit: 1000 }).then(({ data }) => {
       const rows = data?.data?.data || data?.data?.departments || data?.data || [];
       setDepts(Array.isArray(rows) ? rows : []);
@@ -53,7 +61,7 @@ export default function EmployeeForm({ initial, onDone, onCancel }) {
       const rows = data?.data?.shifts || data?.data || [];
       setShifts(Array.isArray(rows) ? rows : []);
     }).catch(() => setShifts([]));
-  }, []);
+  }, [companyId]);
 
   const typeLabel = useCallback((lt) => {
     if (i18n.language?.startsWith('ar')) return lt.name_ar || lt.name || `Type #${lt.id}`;
@@ -118,7 +126,6 @@ export default function EmployeeForm({ initial, onDone, onCancel }) {
   const onSubmit = async (values) => {
     setError('');
     try {
-      const companyId = user?.company_id ?? null;
       if (!companyId) {
         setError('Company context is required');
         return;
@@ -151,6 +158,16 @@ export default function EmployeeForm({ initial, onDone, onCancel }) {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       {error && <Alert type="danger" message={error} />}
+
+      {!companyId && isSuperAdminUser(user) && (
+        <Alert
+          type="warning"
+          message={t(
+            'employee.super_admin_no_company',
+            'لا توجد شركة نشطة. افتح «الشركات» وأنشئ شركة أو فعّل شركة ثم أعد المحاولة.',
+          )}
+        />
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <F name="first_name" label={t('employee.name') + ' (First)'} required />

@@ -14,6 +14,7 @@ import { listShifts } from '../../api/shift.api';
 import { listLogs } from '../../api/device.api';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '../../context/AuthContext';
+import { useTenantCompanyId } from '../../hooks/useTenantCompanyId';
 
 function popoverCoords(triggerEl, minWidth = 192) {
   const rect = triggerEl.getBoundingClientRect();
@@ -245,7 +246,7 @@ export default function UserManagement() {
   /** null | { kind, top, left, minWidth, row? } — floating actions menu */
   const [actionsMenu, setActionsMenu] = useState(null);
   const headerSelectRef = useRef(null);
-  const companyId = user?.company_id ?? null;
+  const companyId = useTenantCompanyId(user);
   const canPickEmployee = hasFeature('employees');
 
   const fetchData = useCallback(async () => {

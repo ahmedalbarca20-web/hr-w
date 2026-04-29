@@ -1,9 +1,8 @@
-'use strict';
+import { HR_ACTIVE_COMPANY_KEY } from './tenantScope';
 
 export const ACTIVITY_STORAGE_KEY = 'hr_activity_log_v1';
 const MAX = 40;
 const EVENT = 'hr-activity-log';
-const ACTIVE_COMPANY_KEY = 'hr_active_company_id';
 
 function getCurrentScope() {
   try {
@@ -11,7 +10,7 @@ function getCurrentScope() {
     if (!u) return 'anon';
     const isSuper = Boolean(u.is_super_admin) || String(u.role || '').toUpperCase() === 'SUPER_ADMIN';
     if (isSuper) {
-      const selected = Number(localStorage.getItem(ACTIVE_COMPANY_KEY));
+      const selected = Number(localStorage.getItem(HR_ACTIVE_COMPANY_KEY));
       if (Number.isInteger(selected) && selected > 0) return `company:${selected}`;
       // Super admin without selected company gets isolated own scope.
       return 'super';

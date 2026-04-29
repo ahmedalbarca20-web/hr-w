@@ -12,6 +12,8 @@ import Alert from '../../components/common/Alert';
 import EmployeeForm from '../../components/forms/EmployeeForm';
 import { listEmployees, deleteEmployee } from '../../api/employee.api';
 import { useAuth } from '../../context/AuthContext';
+import { useTenantCompanyId } from '../../hooks/useTenantCompanyId';
+import { isSuperAdminUser } from '../../utils/tenantScope';
 
 /** `position:fixed` anchor — escapes `overflow-x-auto` on tables */
 function popoverCoords(triggerEl, minWidth = 176) {
@@ -27,6 +29,7 @@ function popoverCoords(triggerEl, minWidth = 176) {
 export default function EmployeeList() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const companyId = useTenantCompanyId(user);
   const [rows, setRows]         = useState([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
@@ -38,7 +41,6 @@ export default function EmployeeList() {
   const [rowSelection, setRowSelection] = useState({});
   const [actionsMenu, setActionsMenu] = useState(null);
   const headerSelectRef = useRef(null);
-  const companyId = user?.company_id ?? null;
 
   const fetchData = useCallback(async () => {
     if (!companyId) {
@@ -265,6 +267,16 @@ export default function EmployeeList() {
     <div className="space-y-6">
       {alert && (
         <Alert type={alert.type} message={alert.msg} onClose={() => setAlert(null)} />
+      )}
+
+      {!loading && isSuperAdminUser(user) && companyId == null && (
+        <Alert
+          type="warning"
+          message={t(
+            'employee.super_admin_no_company',
+            'لا توجد شركة نشطة في النظام. أنشئ شركة من «الشركات» ثم أعد تحميل الصفحة.',
+          )}
+        />
       )}
 
       <div className="md-card" style={{ overflow: 'visible' }}>
