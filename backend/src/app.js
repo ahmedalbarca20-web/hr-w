@@ -114,11 +114,12 @@ const apiLimiter = rateLimit({
 
 app.use('/api', apiLimiter);
 
-// ── Static uploads (served directly, not proxied through API) ──────────
+// ── Static uploads (same root as multer — on Vercel this is under /tmp) ───
 const path = require('path');
+const { getUploadsRoot } = require('./config/upload.paths');
 app.use(
   '/uploads',
-  express.static(path.join(__dirname, '..', 'uploads'), { maxAge: '7d' })
+  express.static(getUploadsRoot(), { maxAge: '7d' })
 );
 
 // ── API routes ──────────────────────────────────────────────────────────────

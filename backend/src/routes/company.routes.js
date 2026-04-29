@@ -34,12 +34,10 @@ const {
   setCompanyFeatures,
 } = require('../services/company-feature.service');
 const { ymdInTimeZone, DEFAULT_IANA, addCalendarMonthsYmd } = require('../utils/timezone');
+const { getUploadsRoot } = require('../config/upload.paths');
 
 const r = Router();
-const isVercelRuntime = Boolean(process.env.VERCEL);
-const uploadBaseDir = isVercelRuntime
-  ? path.join('/tmp', 'uploads')
-  : path.join(__dirname, '..', '..', 'uploads');
+const uploadBaseDir = getUploadsRoot();
 const resolveStoredUploadPath = (relativePath) =>
   path.join(uploadBaseDir, String(relativePath || '').replace(/^uploads[\\/]/, ''));
 const DEFAULT_LEAVE_TYPES = [

@@ -8,10 +8,10 @@ const ctrl = require('../controllers/attendance_request.controller');
 const { authenticate } = require('../middleware/auth.middleware');
 const { requireRole, requireFeature } = require('../middleware/role.middleware');
 
+const { getUploadsRoot } = require('../config/upload.paths');
+
 const r = Router();
-const uploadBaseDir = process.env.VERCEL
-  ? path.join('/tmp', 'uploads')
-  : path.join(__dirname, '..', '..', 'uploads');
+const uploadBaseDir = getUploadsRoot();
 const uploadDir = path.join(uploadBaseDir, 'attendance-requests');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 

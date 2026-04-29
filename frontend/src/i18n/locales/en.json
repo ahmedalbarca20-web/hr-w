@@ -177,7 +177,7 @@
     "pending_title": "Pending mobile attendance requests",
     "show_on_map": "Show on map",
     "view_photo": "View photo",
-    "photo_hint": "You can choose a photo from gallery or capture one with camera",
+    "photo_hint": "Photo must be taken with the camera (no gallery pick)",
     "photo_selected": "Selected photo",
     "approved": "Request approved",
     "rejected": "Request rejected",
