@@ -299,6 +299,15 @@ export default function AttendanceList() {
                   </div>
                   <div className="flex items-center gap-2">
                     <a
+                      href={`https://www.google.com/maps?q=${Number(r.gps_latitude)},${Number(r.gps_longitude)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-ghost text-xs"
+                    >
+                      <span className="material-icons-round text-base">map</span>
+                      {t('attendance_request.show_on_map', 'إظهار على الخارطة')}
+                    </a>
+                    <a
                       href={`/${r.photo_path}`}
                       target="_blank"
                       rel="noreferrer"

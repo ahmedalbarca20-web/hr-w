@@ -407,6 +407,15 @@ export default function EmployeeProfile() {
                 capture="environment"
                 onChange={(e) => setRequestPhoto(e.target.files?.[0] || null)}
               />
+              {requestPhoto ? (
+                <p className="text-xs text-gray-500 sm:col-span-2">
+                  {t('attendance_request.photo_selected', 'الصورة المختارة')}: {requestPhoto.name}
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500 sm:col-span-2">
+                  {t('attendance_request.photo_hint', 'التقاط الصورة يتم مباشرة من الكاميرا فقط')}
+                </p>
+              )}
               <textarea
                 className="input sm:col-span-2 min-h-[80px]"
                 placeholder={t('attendance_request.note_optional', 'ملاحظة (اختياري)')}
