@@ -32,6 +32,13 @@ const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
   .map((o) => o.trim())
   .filter(Boolean);
 
+const vercelSystemOrigins = [
+  process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : '',
+  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '',
+]
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 const vercelPreviewOk = () => {
   const v = (process.env.ALLOW_VERCEL_PREVIEW_ORIGINS || '').toLowerCase();
   return v === '1' || v === 'true' || v === 'yes';
@@ -53,6 +60,10 @@ function corsOriginDelegate(incoming, cb) {
   }
 
   if (allowedOrigins.includes(incoming)) {
+    return cb(null, incoming);
+  }
+
+  if (vercelSystemOrigins.includes(incoming)) {
     return cb(null, incoming);
   }
 
