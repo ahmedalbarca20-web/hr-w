@@ -2,6 +2,7 @@
 
 const path      = require('path');
 const { Sequelize, DataTypes } = require('sequelize');
+const pg = require('pg');
 
 const databaseUrl = (process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || '').trim();
 const inferredDialect = /^postgres(ql)?:\/\//i.test(databaseUrl) ? 'postgres' : '';
@@ -40,6 +41,7 @@ if (dialect === 'sqlite') {
   const useSsl = String(process.env.DB_SSL || 'true').toLowerCase() !== 'false';
   const pgCommon = {
     dialect         : 'postgres',
+    dialectModule   : pg,
     logging         : devLogging,
     pool,
     define          : sharedDefine,
