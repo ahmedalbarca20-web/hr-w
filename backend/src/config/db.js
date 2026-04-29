@@ -49,7 +49,7 @@ const readIntEnv = (name, fallback) => {
  * Can be overridden by env vars: DB_POOL_MAX / DB_POOL_MIN / DB_POOL_ACQUIRE_MS / DB_POOL_IDLE_MS.
  */
 const defaultPoolMax = dialect === 'postgres'
-  ? (isProd ? 2 : 5)
+  ? (isProd ? 1 : 5)
   : 10;
 const pool = {
   max: readIntEnv('DB_POOL_MAX', defaultPoolMax),
