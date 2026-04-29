@@ -11,8 +11,24 @@
 
 const jwt = require('jsonwebtoken');
 
-const ACCESS_SECRET  = process.env.JWT_SECRET          || 'change_me_access_secret';
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET  || 'change_me_refresh_secret';
+const isProd = process.env.NODE_ENV === 'production';
+
+const readSecret = (name, devFallback) => {
+  const value = String(process.env[name] || '').trim();
+  if (value) {
+    if (isProd && /^change_me/i.test(value)) {
+      throw new Error(`[SECURITY] Weak value for env var: ${name}`);
+    }
+    return value;
+  }
+  if (isProd) {
+    throw new Error(`[SECURITY] Missing required env var: ${name}`);
+  }
+  return devFallback;
+};
+
+const ACCESS_SECRET  = readSecret('JWT_SECRET', 'dev_only_access_secret');
+const REFRESH_SECRET = readSecret('JWT_REFRESH_SECRET', 'dev_only_refresh_secret');
 const ACCESS_EXP     = process.env.JWT_EXPIRES_IN      || '8h';
 const REFRESH_EXP    = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 

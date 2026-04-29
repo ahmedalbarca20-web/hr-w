@@ -9,6 +9,21 @@ const inferredDialect = /^postgres(ql)?:\/\//i.test(databaseUrl) ? 'postgres' : 
 const dialectRaw = String(process.env.DB_DIALECT || inferredDialect || 'mysql').toLowerCase();
 /** Sequelize uses 'postgres' not 'postgresql'. */
 const dialect = dialectRaw === 'postgresql' ? 'postgres' : dialectRaw;
+const isProd = process.env.NODE_ENV === 'production';
+
+const readDbSecret = (name, fallback = '') => {
+  const value = String(process.env[name] || '').trim();
+  if (value) {
+    if (isProd && value.toLowerCase() === 'password') {
+      throw new Error(`[SECURITY] Weak value for env var: ${name}`);
+    }
+    return value;
+  }
+  if (isProd) {
+    throw new Error(`[SECURITY] Missing required env var: ${name}`);
+  }
+  return fallback;
+};
 
 const sharedDefine = {
   underscored    : true,
@@ -68,7 +83,7 @@ if (dialect === 'sqlite') {
   sequelize = new Sequelize(
     process.env.DB_NAME || 'hr_db',
     process.env.DB_USER || 'hr_user',
-    process.env.DB_PASS || 'password',
+    readDbSecret('DB_PASS'),
     {
       host    : process.env.DB_HOST    || 'localhost',
       port    : parseInt(process.env.DB_PORT || '3306', 10),

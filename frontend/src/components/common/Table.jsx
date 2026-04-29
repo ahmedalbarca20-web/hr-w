@@ -2,7 +2,6 @@ import { useTranslation } from 'react-i18next';
 import { useMemo, useState } from 'react';
 import { SkeletonRow } from './Loader';
 import Pagination from './Pagination';
-import * as XLSX from 'xlsx';
 
 /** Default cell text when column has no `render` — avoids React #31 on objects. */
 function cellDisplayValue(val) {
@@ -98,7 +97,7 @@ export default function Table({
     });
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!Array.isArray(rows) || rows.length === 0) return;
 
     const exportRows = rows.map((row) => {
@@ -112,10 +111,31 @@ export default function Table({
       return out;
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(exportRows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
-    XLSX.writeFile(workbook, `${exportFileName}.xlsx`);
+    const { Workbook } = await import('exceljs');
+    const workbook = new Workbook();
+    const worksheet = workbook.addWorksheet('Sheet1');
+
+    worksheet.columns = exportableColumns.map((col) => ({
+      header: col.label || col.key,
+      key: col.label || col.key,
+      width: 24,
+    }));
+
+    worksheet.addRows(exportRows);
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob(
+      [buffer],
+      { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+    );
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `${exportFileName}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(downloadUrl);
   };
 
   return (

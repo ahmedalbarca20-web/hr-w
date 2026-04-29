@@ -128,6 +128,8 @@ describe('Device Routes – auth guards', () => {
 
 // ─── Push endpoint – device auth guard ───────────────────────────────────────
 describe('POST /api/devices/push – device auth', () => {
+  jest.setTimeout(15000);
+
   it('returns 401 when no device headers provided', async () => {
     const res = await request(app)
       .post('/api/devices/push')

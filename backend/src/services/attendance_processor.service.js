@@ -169,17 +169,24 @@ function resolveAttendancePunches(effectiveLogs, workDate, shift) {
         continue;
       }
 
-      // If outside configured windows, still classify by shift timeline (not by device state).
-      const ts = new Date(log.event_time).getTime();
-      if (Number.isFinite(shiftMidTs) && ts > shiftMidTs) checkOuts.push(log);
-      else if (Number.isFinite(ts)) checkIns.push(log);
-      else ignoredOutsideWindows += 1;
+      // Outside configured windows: ignore the punch.
+      ignoredOutsideWindows += 1;
       continue;
     }
 
-    // No shift configured: minimal heuristic without trusting device state.
+    // No shift configured: prefer explicit device event type when available.
     const ts = new Date(log.event_time).getTime();
-    if (Number.isFinite(ts)) checkIns.push(log);
+    if (!Number.isFinite(ts)) continue;
+    if (type === 'CHECK_IN') {
+      checkIns.push(log);
+      continue;
+    }
+    if (type === 'CHECK_OUT') {
+      checkOuts.push(log);
+      continue;
+    }
+    // Unknown event types default to check-in side to preserve legacy behavior.
+    checkIns.push(log);
   }
 
   const first_checkin = checkIns.length ? new Date(checkIns[0].event_time) : null;
