@@ -17,47 +17,47 @@ function urlBase64ToUint8Array(base64String) {
  * Safe to call multiple times; updates subscription on server.
  */
 export async function tryRegisterWebPush() {
-  try {
-    if (typeof window === 'undefined') return;
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-    const isLocalhost = /^localhost$|^127\.0\.0\.1$/i.test(window.location.hostname);
-    if (!isLocalhost && !window.isSecureContext) return;
+  try { await enableWebPushNow(); } catch { /* optional feature */ }
+}
 
-    const raw = localStorage.getItem('user');
-    if (!raw) return;
-    const user = JSON.parse(raw);
-    const companyId = getActiveTenantCompanyId(user);
-    if (!companyId) return;
+export async function enableWebPushNow() {
+  if (typeof window === 'undefined') throw new Error('not_supported');
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('not_supported');
+  const isLocalhost = /^localhost$|^127\.0\.0\.1$/i.test(window.location.hostname);
+  if (!isLocalhost && !window.isSecureContext) throw new Error('secure_context_required');
 
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
+  const raw = localStorage.getItem('user');
+  if (!raw) throw new Error('not_logged_in');
+  const user = JSON.parse(raw);
+  const companyId = getActiveTenantCompanyId(user);
+  if (!companyId) throw new Error('company_context_required');
 
-    let perm = Notification.permission;
-    if (perm === 'default') {
-      perm = await Notification.requestPermission();
-    }
-    if (perm !== 'granted') return;
+  const token = localStorage.getItem('access_token');
+  if (!token) throw new Error('not_logged_in');
 
-    const { data: wrap } = await getWebPushPublicKey();
-    const publicKey = wrap?.data?.publicKey;
-    if (!publicKey || typeof publicKey !== 'string') return;
-
-    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-    await navigator.serviceWorker.ready;
-
-    let sub = await reg.pushManager.getSubscription();
-    if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
-      });
-    }
-
-    await subscribeWebPush({
-      company_id: companyId,
-      subscription: sub.toJSON(),
-    });
-  } catch {
-    /* optional feature */
+  let perm = Notification.permission;
+  if (perm === 'default') {
+    perm = await Notification.requestPermission();
   }
+  if (perm !== 'granted') throw new Error('permission_denied');
+
+  const { data: wrap } = await getWebPushPublicKey();
+  const publicKey = wrap?.data?.publicKey;
+  if (!publicKey || typeof publicKey !== 'string') throw new Error('server_not_configured');
+
+  const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+  await navigator.serviceWorker.ready;
+
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+  }
+
+  await subscribeWebPush({
+    company_id: companyId,
+    subscription: sub.toJSON(),
+  });
 }
