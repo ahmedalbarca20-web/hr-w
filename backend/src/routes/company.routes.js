@@ -36,6 +36,12 @@ const {
 const { ymdInTimeZone, DEFAULT_IANA, addCalendarMonthsYmd } = require('../utils/timezone');
 
 const r = Router();
+const isVercelRuntime = Boolean(process.env.VERCEL);
+const uploadBaseDir = isVercelRuntime
+  ? path.join('/tmp', 'uploads')
+  : path.join(__dirname, '..', '..', 'uploads');
+const resolveStoredUploadPath = (relativePath) =>
+  path.join(uploadBaseDir, String(relativePath || '').replace(/^uploads[\\/]/, ''));
 const DEFAULT_LEAVE_TYPES = [
   {
     name: 'Annual Leave',
@@ -166,7 +172,7 @@ const createCompanyAdminUser = async ({ companyId, email, password, adminRoleId 
 };
 
 // ── Multer — contract documents ───────────────────────────────────────────────
-const contractDir = path.join(__dirname, '..', '..', 'uploads', 'contracts');
+const contractDir = path.join(uploadBaseDir, 'contracts');
 if (!fs.existsSync(contractDir)) fs.mkdirSync(contractDir, { recursive: true });
 
 const storage = multer.diskStorage({
@@ -466,7 +472,7 @@ r.post('/:id/contract-doc', upload.single('file'), async (req, res) => {
 
     // Remove old file if exists
     if (co.contract_doc) {
-      const oldPath = path.join(__dirname, '..', '..', co.contract_doc);
+      const oldPath = resolveStoredUploadPath(co.contract_doc);
       if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
     }
 
@@ -501,7 +507,7 @@ r.delete('/:id', async (req, res) => {
     await sequelize.transaction(async (tx) => {
       // Optional cleanup for uploaded contract file.
       if (co.contract_doc) {
-        const oldPath = path.join(__dirname, '..', '..', co.contract_doc);
+        const oldPath = resolveStoredUploadPath(co.contract_doc);
         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
       }
 
