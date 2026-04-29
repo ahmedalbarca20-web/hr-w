@@ -1,13 +1,25 @@
 import axios from 'axios';
 import { logSuccessfulMutation } from '../utils/activityLog';
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api').trim();
+const rawApiBase = String(import.meta.env.VITE_API_BASE_URL || '').trim();
+const isBrowser = typeof window !== 'undefined';
+const currentOrigin = isBrowser ? window.location.origin : '';
+const currentHost = isBrowser ? window.location.host : '';
+
+const isAbsoluteHttpUrl = (v) => /^https?:\/\//i.test(v);
+const shouldForceSameOriginApi = () => {
+  if (!isBrowser || !rawApiBase || !isAbsoluteHttpUrl(rawApiBase)) return false;
+  // On Vercel preview URLs, forcing same-origin '/api' avoids cross-origin preflight failures.
+  const isPreviewHost = /\.vercel\.app$/i.test(currentHost) && !/^hr-w-frontend\.vercel\.app$/i.test(currentHost);
+  return isPreviewHost;
+};
+
+const apiBase = shouldForceSameOriginApi() ? `${currentOrigin}/api` : (rawApiBase || '/api');
 
 if (import.meta.env.PROD && (apiBase === '/api' || apiBase.startsWith('/'))) {
   // eslint-disable-next-line no-console
   console.warn(
-    '[HR API] VITE_API_BASE_URL غير مطلق في الإنتاج — الطلبات تذهب لنفس نطاق الواجهة (/api/...) فيعطي 404 على Vercel. '
-    + 'أضف في Vercel → Environment Variables: VITE_API_BASE_URL=https://عنوان-الـbackend/api ثم Redeploy.',
+    '[HR API] Using same-origin /api base URL in production.'
   );
 }
 
