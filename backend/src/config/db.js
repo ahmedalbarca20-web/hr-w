@@ -170,6 +170,31 @@ const connectDB = async () => {
       await qi.addColumn('attendance', 'surprise_punch_time', { type: DataTypes.DATE, allowNull: true });
     }
   };
+  const ensurePushSubscriptionsTable = async () => {
+    try {
+      await qi.describeTable('push_subscriptions');
+    } catch {
+      await qi.createTable('push_subscriptions', {
+        id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, autoIncrement: true, primaryKey: true },
+        user_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+        company_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
+        endpoint_hash: { type: DataTypes.STRING(64), allowNull: false },
+        endpoint: { type: DataTypes.TEXT, allowNull: false },
+        p256dh: { type: DataTypes.STRING(255), allowNull: false },
+        auth: { type: DataTypes.STRING(255), allowNull: false },
+        user_agent: { type: DataTypes.STRING(512), allowNull: true },
+        created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal('CURRENT_TIMESTAMP') },
+        updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal('CURRENT_TIMESTAMP') },
+      });
+      await qi.addIndex('push_subscriptions', ['user_id'], { name: 'push_subscriptions_user_id_idx' });
+      await qi.addIndex('push_subscriptions', ['company_id'], { name: 'push_subscriptions_company_id_idx' });
+      await qi.addIndex('push_subscriptions', ['user_id', 'endpoint_hash'], {
+        unique: true,
+        name: 'push_subscriptions_user_endpoint_uq',
+      });
+    }
+  };
+
   const ensureAttendanceRequestsTable = async () => {
     const blobType = dialect === 'postgres' ? DataTypes.BLOB : DataTypes.BLOB('long');
     try {
@@ -280,6 +305,7 @@ const connectDB = async () => {
     await ensureDeviceLogSurpriseColumns();
     await ensureAttendanceSurpriseColumns();
     await ensureAttendanceRequestsTable();
+    await ensurePushSubscriptionsTable();
     // Sync with force:false — creates only missing tables, never drops
     await sequelize.sync({ force: false });
     console.log('[DB] SQLite database synced and ready.');
@@ -291,6 +317,7 @@ const connectDB = async () => {
     await ensureDeviceLogSurpriseColumns();
     await ensureAttendanceSurpriseColumns();
     await ensureAttendanceRequestsTable();
+    await ensurePushSubscriptionsTable();
     if (dialect === 'postgres') {
       console.log('[DB] Connected to PostgreSQL (Supabase / PG).');
     } else {

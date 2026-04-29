@@ -8,6 +8,7 @@ import {
   HR_ACTIVE_TENANT_EVENT,
   isSuperAdminUser,
 } from '../utils/tenantScope';
+import { tryRegisterWebPush } from '../utils/webPush';
 
 async function ensureSuperAdminTenantSelection() {
   try {
@@ -103,6 +104,18 @@ export function AuthProvider({ children }) {
     window.addEventListener('auth:logout', handler);
     return () => window.removeEventListener('auth:logout', handler);
   }, [navigate]);
+
+  useEffect(() => {
+    const onTenant = () => { void tryRegisterWebPush(); };
+    window.addEventListener(HR_ACTIVE_TENANT_EVENT, onTenant);
+    return () => window.removeEventListener(HR_ACTIVE_TENANT_EVENT, onTenant);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const t = setTimeout(() => { void tryRegisterWebPush(); }, 1800);
+    return () => clearTimeout(t);
+  }, [user?.id]);
 
   const persistSession = (payload) => {
     const token = payload?.accessToken || payload?.access_token;

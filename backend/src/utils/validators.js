@@ -555,6 +555,21 @@ const surpriseAttendanceActivateSchema = z.object({
   message: z.string().max(2000).optional(),
 });
 
+const pushWebPushSubscribeSchema = z.object({
+  subscription: z.object({
+    endpoint: z.string().url().max(4096),
+    keys: z.object({
+      p256dh: z.string().min(20).max(200),
+      auth: z.string().min(10).max(100),
+    }),
+  }),
+  company_id: z.coerce.number().int().positive().nullable().optional(),
+});
+
+const pushWebPushUnsubscribeSchema = z.object({
+  endpoint: z.string().url().max(4096),
+});
+
 module.exports = {
   zId,
   zDate,
@@ -620,5 +635,7 @@ module.exports = {
   processEmployeeSchema,
   reprocessSchema,
   surpriseAttendanceActivateSchema,
+  pushWebPushSubscribeSchema,
+  pushWebPushUnsubscribeSchema,
 };
 

@@ -3,6 +3,7 @@
 const { Op } = require('sequelize');
 const SurpriseAttendanceEvent = require('../models/surprise_attendance.model');
 const Announcement = require('../models/announcement.model');
+const pushSvc = require('./push_notification.service');
 
 async function expirePastEvents(company_id) {
   await SurpriseAttendanceEvent.update(
@@ -47,6 +48,20 @@ async function activate(company_id, created_by, { duration_minutes, title, messa
     expires_at: end,
     is_pinned: 1,
   });
+
+  void (async () => {
+    try {
+      if (!pushSvc.isWebPushConfigured()) return;
+      await pushSvc.notifyCompanyAllSubscribers(company_id, {
+        title: title || 'بصمة مفاجئة',
+        body: message || `يرجى التوجه للبصمة خلال ${duration_minutes} دقيقة.`,
+        url: pushSvc.defaultOpenUrl('/'),
+        tag: `surprise-attendance-${event.id}`,
+      });
+    } catch {
+      /* ignore */
+    }
+  })();
 
   return event;
 }

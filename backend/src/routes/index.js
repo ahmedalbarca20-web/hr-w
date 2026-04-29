@@ -13,6 +13,7 @@ const deviceRoutes        = require('./device.routes');
 const shiftsRoutes        = require('./shifts.routes');
 const processRoutes       = require('./process.routes');
 const reportRoutes        = require('./report.routes');
+const notificationRoutes  = require('./notification.routes');
 
 const { authenticate }  = require('../middleware/auth.middleware');
 const { sendSuccess }   = require('../utils/response');
@@ -119,6 +120,9 @@ router.patch('/settings/company', authenticate, async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// Push / browser notifications (Web Push)
+router.use('/notifications', notificationRoutes);
 
 // Auth module
 router.use('/auth', authRoutes);

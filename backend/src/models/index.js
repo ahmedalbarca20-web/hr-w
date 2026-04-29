@@ -4,6 +4,7 @@ const Company    = require('./company.model');
 const CompanyFeature = require('./company_feature.model');
 const Role       = require('./role.model');
 const User       = require('./user.model');
+const PushSubscription = require('./push_subscription.model');
 const Department = require('./department.model');
 const Employee   = require('./employee.model');
 const Attendance = require('./attendance.model');
@@ -24,6 +25,9 @@ CompanyFeature.belongsTo(Company, { foreignKey: 'company_id', as: 'company' });
 
 Role.hasMany(User, { foreignKey: 'role_id', as: 'users' });
 User.belongsTo(Role, { foreignKey: 'role_id', as: 'role' });
+
+User.hasMany(PushSubscription, { foreignKey: 'user_id', as: 'pushSubscriptions' });
+PushSubscription.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
 // Department tree
 Department.belongsTo(Department, { foreignKey: 'parent_id', as: 'parent' });

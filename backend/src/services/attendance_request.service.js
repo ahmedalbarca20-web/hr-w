@@ -9,6 +9,8 @@ const AttendanceRequest = require('../models/attendance_request.model');
 const Attendance = require('../models/attendance.model');
 const Employee = require('../models/employee.model');
 const Company = require('../models/company.model');
+const User = require('../models/user.model');
+const pushSvc = require('./push_notification.service');
 const { paginate, paginateResult } = require('../utils/pagination');
 const { ymdInTimeZone, DEFAULT_IANA } = require('../utils/timezone');
 
@@ -100,6 +102,29 @@ async function submitRequest(company_id, employee_id, data, photo) {
     note: data.note || null,
     status: 'PENDING',
   });
+
+  void (async () => {
+    try {
+      if (!pushSvc.isWebPushConfigured()) return;
+      const emp = await Employee.findOne({
+        where: { id: employee_id, company_id },
+        attributes: ['first_name', 'last_name', 'employee_number'],
+      });
+      const who = emp
+        ? `${String(emp.first_name || '').trim()} ${String(emp.last_name || '').trim()} (${emp.employee_number})`.trim()
+        : `موظف #${employee_id}`;
+      const typeLabel = data.request_type === 'CHECK_OUT' ? 'طلب خروج' : 'طلب دخول';
+      await pushSvc.notifyCompanyAdminsHr(company_id, {
+        title: 'طلب حضور اضطراري',
+        body: `${who} — ${typeLabel}`,
+        url: pushSvc.defaultOpenUrl('/attendance'),
+        tag: `attendance-request-${rec.id}`,
+      });
+    } catch {
+      /* non-fatal */
+    }
+  })();
+
   return rec;
 }
 
@@ -140,13 +165,14 @@ async function reviewRequest(id, company_id, reviewer_id, { status, rejection_re
   if (reqRow.status !== 'PENDING') throw badReq('Request is no longer pending');
 
   if (status === 'REJECTED') {
-    await reqRow.update({
-      status: 'REJECTED',
-      reviewed_by: reviewer_id,
-      reviewed_at: new Date(),
-      rejection_reason: rejection_reason || null,
-    });
+  await reqRow.update({
+    status: 'REJECTED',
+    reviewed_by: reviewer_id,
+    reviewed_at: new Date(),
+    rejection_reason: rejection_reason || null,
+  });
     await stripAttendanceRequestPhoto(reqRow.id);
+    void notifyEmployeeAttendanceRequestResult(company_id, reqRow.employee_id, 'REJECTED', rejection_reason);
     return reqRow.reload();
   }
 
@@ -182,7 +208,30 @@ async function reviewRequest(id, company_id, reviewer_id, { status, rejection_re
     rejection_reason: null,
   });
   await stripAttendanceRequestPhoto(reqRow.id);
+  void notifyEmployeeAttendanceRequestResult(company_id, reqRow.employee_id, 'APPROVED', null);
   return reqRow.reload();
+}
+
+async function notifyEmployeeAttendanceRequestResult(company_id, employee_id, status, rejection_reason) {
+  try {
+    if (!pushSvc.isWebPushConfigured()) return;
+    const acc = await User.findOne({
+      where: { employee_id, company_id, is_active: 1 },
+      attributes: ['id'],
+    });
+    if (!acc) return;
+    const ok = status === 'APPROVED';
+    await pushSvc.notifyUser(acc.id, {
+      title: ok ? 'تمت الموافقة على طلب الحضور' : 'تم رفض طلب الحضور',
+      body: ok
+        ? 'سُجّل حضورك من طلب البصمة الاضطرارية.'
+        : String(rejection_reason || 'راجع الإدارة للتفاصيل.'),
+      url: pushSvc.defaultOpenUrl('/employees/profile'),
+      tag: `attendance-request-result-${employee_id}`,
+    });
+  } catch {
+    /* ignore */
+  }
 }
 
 module.exports = { submitRequest, listRequests, reviewRequest };
