@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header  from './Header';
 import Footer  from './Footer';
@@ -40,8 +41,27 @@ export default function PrivateLayout({ children }) {
 function PrivateLayoutInner({ children }) {
   const { t }     = useTranslation();
   const location  = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { isDesktop } = useSidebar();
+
+  useEffect(() => {
+    const onSwMessage = (event) => {
+      const d = event.data;
+      if (!d || d.type !== 'HR_PUSH_NAVIGATE' || typeof d.url !== 'string') return;
+      try {
+        const u = new URL(d.url, window.location.origin);
+        if (u.origin !== window.location.origin) return;
+        navigate(`${u.pathname}${u.search}${u.hash}`);
+      } catch {
+        /* ignore */
+      }
+    };
+    const sw = navigator.serviceWorker;
+    if (!sw) return undefined;
+    sw.addEventListener('message', onSwMessage);
+    return () => sw.removeEventListener('message', onSwMessage);
+  }, [navigate]);
 
   const titleKey = Object.entries(PAGE_TITLES).findLast(
     ([path]) => location.pathname === path || location.pathname.startsWith(path + '/')
