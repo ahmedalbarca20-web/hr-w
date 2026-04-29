@@ -9,6 +9,7 @@
     "dev": "nodemon server.js",
     "test": "jest --runInBand",
     "seed": "node database/seed.js",
+    "seed:super-admin-reset": "node database/reset-super-admin-password.js",
     "seed:demo": "node database/seed.demo-employees.js",
     "init:sqlite": "node database/init-sqlite.js"
   },
