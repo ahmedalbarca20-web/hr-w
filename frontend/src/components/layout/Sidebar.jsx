@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useLang } from '../../context/LangContext';
 import { useSidebar } from '../../context/SidebarContext';
 import { useAuth } from '../../context/AuthContext';
-import { enableWebPushNow } from '../../utils/webPush';
+import { enableWebPushNow, messageForWebPushError } from '../../utils/webPush';
 import clsx from 'clsx';
 
 /* Keys shown under "Main" (single flat links, no duplicate reports center). */
@@ -189,18 +189,7 @@ export default function Sidebar() {
       await enableWebPushNow();
       setPushMsg(t('notifications.enabled', 'تم تفعيل التنبيهات على هذا الجهاز'));
     } catch (e) {
-      const code = e?.message || '';
-      if (code === 'permission_denied') {
-        setPushMsg(t('notifications.denied', 'تم رفض الإذن. فعّل الإشعارات من إعدادات المتصفح.'));
-      } else if (code === 'server_not_configured') {
-        setPushMsg(t('notifications.server_not_configured', 'الخادم غير مهيأ للتنبيهات.'));
-      } else if (code === 'company_context_required') {
-        setPushMsg(t('notifications.company_required', 'اختر شركة أولاً ثم أعد المحاولة.'));
-      } else if (code === 'secure_context_required') {
-        setPushMsg(t('notifications.secure_required', 'التنبيهات تحتاج HTTPS.'));
-      } else {
-        setPushMsg(t('notifications.enable_failed', 'تعذر تفعيل التنبيهات حالياً.'));
-      }
+      setPushMsg(messageForWebPushError(t, e));
     } finally {
       setPushBusy(false);
     }
