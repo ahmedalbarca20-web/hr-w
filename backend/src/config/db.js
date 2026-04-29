@@ -37,7 +37,26 @@ const devLogging = process.env.NODE_ENV === 'development'
   ? (sql) => console.log('[SQL]', sql)
   : false;
 
-const pool = { max: 10, min: 0, acquire: 30000, idle: 10000 };
+const readIntEnv = (name, fallback) => {
+  const raw = String(process.env[name] || '').trim();
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isInteger(n) && n >= 0 ? n : fallback;
+};
+
+/**
+ * Default PG pool is intentionally small for serverless + Supabase session limits.
+ * Can be overridden by env vars: DB_POOL_MAX / DB_POOL_MIN / DB_POOL_ACQUIRE_MS / DB_POOL_IDLE_MS.
+ */
+const defaultPoolMax = dialect === 'postgres'
+  ? (isProd ? 2 : 5)
+  : 10;
+const pool = {
+  max: readIntEnv('DB_POOL_MAX', defaultPoolMax),
+  min: readIntEnv('DB_POOL_MIN', 0),
+  acquire: readIntEnv('DB_POOL_ACQUIRE_MS', 30000),
+  idle: readIntEnv('DB_POOL_IDLE_MS', dialect === 'postgres' ? 5000 : 10000),
+};
 
 let sequelize;
 

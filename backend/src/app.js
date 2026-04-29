@@ -21,6 +21,16 @@ const { sendError, ERROR_CODES }     = require('./utils/response');
 
 const app = express();
 
+// Behind Vercel/edge proxies, trust first proxy so rate-limit uses real client IP.
+const trustProxyEnv = String(process.env.TRUST_PROXY || '').trim().toLowerCase();
+if (trustProxyEnv) {
+  if (trustProxyEnv === 'true' || trustProxyEnv === '1' || trustProxyEnv === 'yes') app.set('trust proxy', 1);
+  else if (trustProxyEnv === 'false' || trustProxyEnv === '0' || trustProxyEnv === 'no') app.set('trust proxy', false);
+  else app.set('trust proxy', trustProxyEnv);
+} else if (process.env.NODE_ENV === 'production' || process.env.VERCEL === '1') {
+  app.set('trust proxy', 1);
+}
+
 // ── Security headers ─────────────────────────────────────────────────────
 app.use(helmet());
 

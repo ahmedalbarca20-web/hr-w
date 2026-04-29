@@ -54,7 +54,13 @@ export default function AppRoutes() {
         {/* ── All Authenticated Users */}
         <Route path="/" element={<Private><Dashboard /></Private>} />
         <Route path="/employees/profile" element={<Private><EmployeeProfile /></Private>} />
-        <Route path="/settings" element={<Private><Settings /></Private>} />
+        <Route path="/settings" element={
+          <Private>
+            <RoleRoute roles={['ADMIN', 'HR', 'SUPER_ADMIN']}>
+              <Settings />
+            </RoleRoute>
+          </Private>
+        } />
 
         {/* ── All Authenticated: Attendance & Leave (Employee Self-Service) */}
         <Route path="/attendance/*" element={

@@ -93,7 +93,7 @@ exports.getPhoto = asyncHandler(async (req, res) => {
     }
   }
 
-  return sendError(res, 'Photo not available', 404, 'NOT_FOUND');
+  return sendError(res, 'Photo not available or expired', 410, 'PHOTO_EXPIRED');
 });
 
 exports.listRequests = asyncHandler(async (req, res) => {

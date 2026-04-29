@@ -45,6 +45,27 @@ function parseJsonArray(val) {
   return [];
 }
 
+async function compressImageForAttendance(file) {
+  if (!(file instanceof File) || !file.type.startsWith('image/')) return file;
+  const bitmap = await createImageBitmap(file);
+  const maxSide = 1280;
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return file;
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  const blob = await new Promise((resolve) => {
+    canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.68);
+  });
+  if (!blob) return file;
+  const compressed = new File([blob], `attreq_${Date.now()}.jpg`, { type: 'image/jpeg' });
+  return compressed.size < file.size ? compressed : file;
+}
+
 const STATUS_COLOR = { ACTIVE: 'green', INACTIVE: 'gray', TERMINATED: 'red' };
 const STATUS_CLASS = {
   green: 'bg-green-100 text-green-700',
@@ -405,7 +426,19 @@ export default function EmployeeProfile() {
                 type="file"
                 accept="image/*"
                 capture="environment"
-                onChange={(e) => setRequestPhoto(e.target.files?.[0] || null)}
+                onChange={async (e) => {
+                  const picked = e.target.files?.[0] || null;
+                  if (!picked) {
+                    setRequestPhoto(null);
+                    return;
+                  }
+                  try {
+                    const compressed = await compressImageForAttendance(picked);
+                    setRequestPhoto(compressed);
+                  } catch {
+                    setRequestPhoto(picked);
+                  }
+                }}
               />
               {requestPhoto ? (
                 <p className="text-xs text-gray-500 sm:col-span-2">

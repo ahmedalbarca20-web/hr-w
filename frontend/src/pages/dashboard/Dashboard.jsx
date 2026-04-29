@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -113,6 +113,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState(() => getActivityLog());
   const [activeSurprise, setActiveSurprise] = useState(null);
+  const lastNotifiedSurpriseId = useRef(null);
 
   useEffect(() => {
     setActivities(getActivityLog());
@@ -120,11 +121,16 @@ export default function Dashboard() {
   }, [user?.company_id, user?.is_super_admin, user?.role]);
 
   useEffect(() => {
+    if (!isAdminOrHr) {
+      setStats({ total_employees: 0, present_today: 0, on_leave: 0, month_payroll: 0 });
+      setLoading(false);
+      return;
+    }
     api.get('/dashboard/summary')
       .then(({ data }) => setStats(data.data))
       .catch(() => setStats({ total_employees: 0, present_today: 0, on_leave: 0, month_payroll: 0 }))
       .finally(() => setLoading(false));
-  }, []);
+  }, [isAdminOrHr]);
 
   const refreshDevices = useCallback(() => {
     if (!isAdminOrHr || !hasFeature('devices')) return Promise.resolve();
@@ -163,11 +169,53 @@ export default function Dashboard() {
     });
   }, [isAdminOrHr, user]);
 
+  const playSurpriseBeep = useCallback(() => {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 920;
+      gain.gain.value = 0.0001;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45);
+      osc.stop(ctx.currentTime + 0.5);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
-    getActiveSurpriseAttendance()
+    let timer = null;
+    const pull = () => getActiveSurpriseAttendance()
       .then(({ data }) => setActiveSurprise(data?.data || null))
       .catch(() => setActiveSurprise(null));
+    pull();
+    timer = setInterval(pull, 30000);
+    return () => { if (timer) clearInterval(timer); };
   }, []);
+
+  useEffect(() => {
+    if (!activeSurprise) return;
+    const sid = String(activeSurprise.id || activeSurprise.starts_at || '');
+    if (!sid || sid === lastNotifiedSurpriseId.current) return;
+    lastNotifiedSurpriseId.current = sid;
+    playSurpriseBeep();
+    if ('Notification' in window) {
+      if (Notification.permission === 'granted') {
+        new Notification(t('attendance.surprise_active', 'بصمة مفاجئة فعالة الآن'), {
+          body: activeSurprise.message || t('attendance.surprise_default_msg', 'يرجى التوجه للبصمة خلال الوقت المحدد.'),
+        });
+      } else if (Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
+    }
+  }, [activeSurprise, playSurpriseBeep, t]);
 
   useEffect(() => {
     if (!hasFeature('announcements')) {

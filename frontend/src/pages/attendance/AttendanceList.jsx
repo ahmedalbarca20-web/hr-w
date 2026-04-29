@@ -212,6 +212,11 @@ export default function AttendanceList() {
   };
 
   const handleReviewRequest = async (id, status) => {
+    const confirmMsg = status === 'APPROVED'
+      ? t('attendance_request.confirm_approve', 'تأكيد الموافقة على هذا الطلب؟')
+      : t('attendance_request.confirm_reject', 'تأكيد رفض هذا الطلب؟');
+    if (!window.confirm(confirmMsg)) return;
+
     setReviewBusyId(id);
     try {
       await reviewAttendanceRequest(id, { status });
