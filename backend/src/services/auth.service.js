@@ -118,10 +118,19 @@ const login = async (email, password, company_id = null, company_password = null
     ? { email: normalizedEmail, company_id, is_active: 1 }
     : { email: normalizedEmail, is_active: 1 };
 
-  const user = await User.findOne({
+  let user = await User.findOne({
     where  : whereClause,
     include: [{ model: Role, as: 'role' }],
   });
+
+  // If a company scope was provided but no tenant row matches, still allow
+  // super-admin login with the same email (super admins are global accounts).
+  if (!user && tenantScoped) {
+    user = await User.findOne({
+      where: { email: normalizedEmail, is_active: 1 },
+      include: [{ model: Role, as: 'role', where: { name: SUPER_ADMIN_ROLE } }],
+    });
+  }
 
   if (!user) {
     const err = new Error('Invalid email or password');
