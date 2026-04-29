@@ -37,6 +37,15 @@ exports.listUsers = asyncHandler(async (req, res) => {
   sendSuccess(res, data);
 });
 
+exports.listUserRoles = asyncHandler(async (req, res) => {
+  const companyId = resolveCompanyId(req);
+  if (!companyId && req.user.is_super_admin) {
+    return sendError(res, 'company_id is required for super admin', 422, 'VALIDATION_ERROR');
+  }
+  const data = await userSvc.listRoles(companyId);
+  sendSuccess(res, data);
+});
+
 exports.getUser = asyncHandler(async (req, res) => {
   const id = parseId(req, res); if (!id) return;
   const companyId = resolveCompanyId(req);

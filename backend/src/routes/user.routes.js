@@ -33,6 +33,7 @@ r.use(requireFeature('users'));
 // ── User management ──────────────────────────────────────────────────────────
 
 r.get   ('/',    requireRole('ADMIN', 'HR'), ctrl.listUsers);
+r.get   ('/roles', requireRole('ADMIN', 'HR'), ctrl.listUserRoles);
 r.post  ('/',    requireRole('ADMIN', 'HR'), ctrl.createUser);
 r.get   ('/:id', requireRole('ADMIN', 'HR'), ctrl.getUser);
 r.put   ('/:id', requireRole('ADMIN', 'HR'), ctrl.updateUser);

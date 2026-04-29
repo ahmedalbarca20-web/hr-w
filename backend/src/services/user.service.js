@@ -4,6 +4,7 @@ const { Op }    = require('sequelize');
 const User      = require('../models/user.model');
 const Role      = require('../models/role.model');
 const Employee  = require('../models/employee.model');
+const Company   = require('../models/company.model');
 const WorkShift = require('../models/work_shift.model');
 const Department = require('../models/department.model');
 const { hashPassword } = require('../utils/hash');
@@ -17,6 +18,20 @@ const { ymdInTimeZone, DEFAULT_IANA } = require('../utils/timezone');
 const notFound  = (id) => Object.assign(new Error(`User ${id} not found`), { statusCode: 404, code: 'NOT_FOUND' });
 const conflict  = (msg) => Object.assign(new Error(msg), { statusCode: 409, code: 'CONFLICT' });
 const badReq    = (msg) => Object.assign(new Error(msg), { statusCode: 400, code: 'VALIDATION_ERROR' });
+
+async function assertEmailNotCompanyContact(company_id, email, currentUserId = null) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) return;
+  const company = await Company.findOne({ where: { id: company_id } });
+  if (!company?.email) return;
+  const companyEmail = String(company.email).trim().toLowerCase();
+  if (!companyEmail || normalizedEmail !== companyEmail) return;
+  if (currentUserId != null) {
+    const sameUser = await User.findOne({ where: { id: currentUserId, email: normalizedEmail, company_id } });
+    if (!sameUser) return;
+  }
+  throw conflict('Company contact email cannot be used as a user login email');
+}
 
 // ── List ─────────────────────────────────────────────────────────────────────
 
@@ -36,6 +51,14 @@ async function list(company_id, { page = 1, limit = 20, is_active, search } = {}
     ...paginate(page, limit),
   });
   return paginateResult(rows, count, page, limit);
+}
+
+async function listRoles(company_id) {
+  return Role.findAll({
+    where: { company_id },
+    attributes: ['id', 'name', 'name_ar'],
+    order: [['id', 'ASC']],
+  });
 }
 
 // ── Get one ──────────────────────────────────────────────────────────────────
@@ -61,6 +84,7 @@ async function create(company_id, data) {
   // Email must be unique globally
   const existing = await User.findOne({ where: { email: normalizedEmail } });
   if (existing) throw conflict(`Email ${normalizedEmail} is already registered`);
+  await assertEmailNotCompanyContact(company_id, normalizedEmail);
 
   // Validate role belongs to company
   const role = await Role.findOne({ where: { id: data.role_id, company_id } });
@@ -137,6 +161,7 @@ async function update(id, company_id, data) {
     const normalizedEmail = data.email.trim().toLowerCase();
     const dup = await User.findOne({ where: { email: normalizedEmail, id: { [Op.ne]: id } } });
     if (dup) throw conflict(`Email ${normalizedEmail} is already in use`);
+    await assertEmailNotCompanyContact(company_id, normalizedEmail, id);
     data.email = normalizedEmail;
   }
   if (data.role_id) {
@@ -206,4 +231,13 @@ async function permanentDelete(id, company_id, actingUserId) {
   await user.destroy();
 }
 
-module.exports = { list, getById, create, update, deactivate, resetPassword, permanentDelete };
+module.exports = {
+  list,
+  listRoles,
+  getById,
+  create,
+  update,
+  deactivate,
+  resetPassword,
+  permanentDelete,
+};

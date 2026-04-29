@@ -8,7 +8,14 @@ import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
 import Alert from '../../components/common/Alert';
 import Badge from '../../components/common/Badge';
-import { listUsers, createUser, deactivateUser, updateUser, permanentlyDeleteUser } from '../../api/user.api';
+import {
+  listUsers,
+  listUserRoles,
+  createUser,
+  deactivateUser,
+  updateUser,
+  permanentlyDeleteUser,
+} from '../../api/user.api';
 import { listEmployees } from '../../api/employee.api';
 import { listShifts } from '../../api/shift.api';
 import { listLogs } from '../../api/device.api';
@@ -44,7 +51,7 @@ function EmployeeSelect({ register, name, employees, label, hint }) {
   );
 }
 
-function UserForm({ onDone, onCancel, companyId, employees, shifts, biometricOptions }) {
+function UserForm({ onDone, onCancel, companyId, employees, shifts, biometricOptions, roles }) {
   const { t } = useTranslation();
   const { register, handleSubmit, watch, formState: { isSubmitting, errors } } = useForm();
   const autoCreateEmployee = watch('auto_create_employee');
@@ -86,9 +93,11 @@ function UserForm({ onDone, onCancel, companyId, employees, shifts, biometricOpt
           <label className="label">{t('users.role')}</label>
           <select className="input" {...register('role_id', { required: true })}>
             <option value="">— {t('users.select_role')} —</option>
-            <option value="1">ADMIN</option>
-            <option value="2">HR</option>
-            <option value="3">EMPLOYEE</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name_ar || r.name}
+              </option>
+            ))}
           </select>
         </div>
         <EmployeeSelect
@@ -156,7 +165,7 @@ function UserForm({ onDone, onCancel, companyId, employees, shifts, biometricOpt
   );
 }
 
-function UserEditForm({ userRow, onDone, onCancel, companyId, employees }) {
+function UserEditForm({ userRow, onDone, onCancel, companyId, employees, roles }) {
   const { t } = useTranslation();
   const { register, handleSubmit, formState: { isSubmitting } } = useForm({
     defaultValues: {
@@ -200,9 +209,11 @@ function UserEditForm({ userRow, onDone, onCancel, companyId, employees }) {
         <div className="col-span-2">
           <label className="label">{t('users.role')}</label>
           <select className="input" {...register('role_id', { required: true })}>
-            <option value="1">ADMIN</option>
-            <option value="2">HR</option>
-            <option value="3">EMPLOYEE</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name_ar || r.name}
+              </option>
+            ))}
           </select>
         </div>
         <EmployeeSelect
@@ -234,6 +245,7 @@ export default function UserManagement() {
 
   const [rows, setRows] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [roles, setRoles] = useState([]);
   const [shifts, setShifts] = useState([]);
   const [biometricOptions, setBiometricOptions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -304,6 +316,16 @@ export default function UserManagement() {
       return { kind: 'bulk', top, left, minWidth };
     });
   }, []);
+
+  useEffect(() => {
+    if (!companyId) {
+      setRoles([]);
+      return;
+    }
+    listUserRoles({ company_id: companyId })
+      .then(({ data }) => setRoles(Array.isArray(data?.data) ? data.data : []))
+      .catch(() => setRoles([]));
+  }, [companyId]);
 
   useEffect(() => {
     if (!canPickEmployee || !companyId) {
@@ -580,6 +602,7 @@ export default function UserManagement() {
         <UserForm
           companyId={companyId}
           employees={employees}
+          roles={roles}
           shifts={shifts}
           biometricOptions={biometricOptions}
           onDone={() => { setModal(false); fetchData(); }}
@@ -593,6 +616,7 @@ export default function UserManagement() {
             userRow={editRow}
             companyId={companyId}
             employees={employees}
+            roles={roles}
             onDone={() => { setEditRow(null); fetchData(); }}
             onCancel={() => setEditRow(null)}
           />
