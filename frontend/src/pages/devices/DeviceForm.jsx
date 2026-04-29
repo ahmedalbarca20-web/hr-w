@@ -301,26 +301,6 @@ export default function DeviceForm() {
       </div>
 
       <form onSubmit={handleSave} className="bg-white rounded-xl shadow-card p-6 space-y-5">
-        <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 leading-relaxed">
-          <p className="font-semibold flex items-center gap-2">
-            <span className="material-icons-round text-lg text-amber-700">info</span>
-            كيف يرتبط الجهاز بالبرنامج؟
-          </p>
-          <ul className="mt-2 list-disc list-inside space-y-1 text-amber-900/90">
-            <li>
-              حقل <strong>عنوان الشبكة</strong> (مثل <code className="bg-white/80 px-1 rounded">192.168.1.204</code>) هو عنوان
-              <strong> الجهاز</strong>؛ زر «اختبار الاتصال» يقرأ الرقم التسلسلي والإصدار عبر <strong>بروتوكول ZK</strong> (zkteco-js) على المنفذ المعروض (افتراضي 4370).
-            </li>
-            <li>
-              لإرسال <strong>سجلات الحضور</strong> إلى النظام يجب ضبط الجهاز (ZKTeco: ADMS / Cloud Server) ليرسل إلى عنوان
-              <strong> هذا الخادم</strong> — أي IP ومنفذ الحاسبة التي تشغّل الـ API (مثال <code className="bg-white/80 px-1 rounded">http://192.168.1.10:5000/api/devices/push</code>) وليس العكس.
-            </li>
-            <li>
-              عيّن في ملف <code className="bg-white/80 px-1 rounded">backend/.env</code> القيمة <code className="bg-white/80 px-1 rounded">PUBLIC_API_URL</code> بنفس عنوان الـ API الذي يصل إليه الجهاز على الشبكة المحلية.
-            </li>
-          </ul>
-        </div>
-
         <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wider border-b border-gray-100 pb-3">Device Information</h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -397,16 +377,6 @@ export default function DeviceForm() {
             <a href="https://coding-libs.github.io/zkteco-js/" className="underline font-medium" target="_blank" rel="noreferrer">zkteco-js</a>
             {' '}(تجريبية — غير موصى بها للإنتاج حسب المؤلفين). نوع «HYBRID»: إن فشل ZK يُجرى اختبار واجهة الويب (Fingertic).
           </p>
-          {zkDebug?.hint_ar && (
-            <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 leading-snug">
-              {zkDebug.hint_ar}
-            </p>
-          )}
-          {zkDebug && testResult === 'error' && (
-            <pre className="text-[11px] bg-gray-900 text-green-100 p-3 rounded-lg overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap break-all">
-              {JSON.stringify(zkDebug, null, 2)}
-            </pre>
-          )}
           {testResult === 'success' && (
             <span className="flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 px-3 py-1.5 rounded-lg">
               <span className="material-icons-round text-sm">check_circle</span>
