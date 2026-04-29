@@ -3,7 +3,9 @@
 const path      = require('path');
 const { Sequelize, DataTypes } = require('sequelize');
 
-const dialectRaw = String(process.env.DB_DIALECT || 'mysql').toLowerCase();
+const databaseUrl = (process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || '').trim();
+const inferredDialect = /^postgres(ql)?:\/\//i.test(databaseUrl) ? 'postgres' : '';
+const dialectRaw = String(process.env.DB_DIALECT || inferredDialect || 'mysql').toLowerCase();
 /** Sequelize uses 'postgres' not 'postgresql'. */
 const dialect = dialectRaw === 'postgresql' ? 'postgres' : dialectRaw;
 
@@ -46,7 +48,6 @@ if (dialect === 'sqlite') {
       : {},
   };
 
-  const databaseUrl = (process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || '').trim();
   if (databaseUrl) {
     sequelize = new Sequelize(databaseUrl, pgCommon);
   } else {
