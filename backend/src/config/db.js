@@ -152,8 +152,27 @@ const connectDB = async () => {
     }
   };
   const ensureAttendanceRequestsTable = async () => {
+    const blobType = dialect === 'postgres' ? DataTypes.BLOB : DataTypes.BLOB('long');
     try {
-      await qi.describeTable('attendance_requests');
+      let cols = await qi.describeTable('attendance_requests');
+      if (!cols.photo_binary) {
+        await qi.addColumn('attendance_requests', 'photo_binary', { type: blobType, allowNull: true });
+      }
+      if (!cols.photo_mime) {
+        await qi.addColumn('attendance_requests', 'photo_mime', { type: DataTypes.STRING(64), allowNull: true });
+      }
+      cols = await qi.describeTable('attendance_requests');
+      const pp = cols.photo_path;
+      if (pp) {
+        const allowNull = pp.allowNull === true || pp.allowNull === 'YES' || pp.nullable === true;
+        if (!allowNull) {
+          try {
+            await qi.changeColumn('attendance_requests', 'photo_path', { type: DataTypes.STRING(255), allowNull: true });
+          } catch (e) {
+            console.warn('[DB] attendance_requests.photo_path nullable:', e?.message || e);
+          }
+        }
+      }
     } catch {
       await qi.createTable('attendance_requests', {
         id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, autoIncrement: true, primaryKey: true },
@@ -165,7 +184,9 @@ const connectDB = async () => {
         gps_latitude: { type: DataTypes.DECIMAL(10, 7), allowNull: false },
         gps_longitude: { type: DataTypes.DECIMAL(10, 7), allowNull: false },
         gps_accuracy_m: { type: DataTypes.DECIMAL(8, 2), allowNull: false, defaultValue: 0 },
-        photo_path: { type: DataTypes.STRING(255), allowNull: false },
+        photo_path: { type: DataTypes.STRING(255), allowNull: true },
+        photo_binary: { type: blobType, allowNull: true },
+        photo_mime: { type: DataTypes.STRING(64), allowNull: true },
         note: { type: DataTypes.TEXT, allowNull: true },
         status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'PENDING' },
         reviewed_by: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },

@@ -19,7 +19,11 @@ AttendanceRequest.init(
     gps_latitude: { type: DataTypes.DECIMAL(10, 7), allowNull: false },
     gps_longitude: { type: DataTypes.DECIMAL(10, 7), allowNull: false },
     gps_accuracy_m: { type: DataTypes.DECIMAL(8, 2), allowNull: false, defaultValue: 0 },
-    photo_path: { type: DataTypes.STRING(255), allowNull: false },
+    /** Legacy disk path; new uploads use photo_binary only (ephemeral). */
+    photo_path: { type: DataTypes.STRING(255), allowNull: true },
+    /** Short-lived image bytes (cleared on approve/reject or after ~24h if still pending). */
+    photo_binary: { type: DataTypes.BLOB('long'), allowNull: true },
+    photo_mime: { type: DataTypes.STRING(64), allowNull: true },
     note: { type: DataTypes.TEXT, allowNull: true },
     status: {
       type: DataTypes.ENUM('PENDING', 'APPROVED', 'REJECTED'),
@@ -47,5 +51,11 @@ AttendanceRequest.init(
     ],
   },
 );
+
+AttendanceRequest.prototype.toJSON = function toJSON() {
+  const plain = { ...this.get({ plain: true }) };
+  delete plain.photo_binary;
+  return plain;
+};
 
 module.exports = AttendanceRequest;

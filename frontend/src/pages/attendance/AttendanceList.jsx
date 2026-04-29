@@ -11,6 +11,7 @@ import {
   reviewAttendanceRequest,
 } from '../../api/attendance.api';
 import { useAuth } from '../../context/AuthContext';
+import { getResolvedApiBaseUrl } from '../../api/axios';
 
 export default function AttendanceList() {
   const { t }   = useTranslation();
@@ -31,6 +32,29 @@ export default function AttendanceList() {
   const [activeSurpriseLoading, setActiveSurpriseLoading] = useState(false);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [reviewBusyId, setReviewBusyId] = useState(null);
+
+  const openAttendanceRequestPhoto = useCallback(async (requestId) => {
+    const token = localStorage.getItem('access_token');
+    const base = getResolvedApiBaseUrl().replace(/\/$/, '');
+    const url = `${base}/attendance-requests/${requestId}/photo`;
+    try {
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        window.alert(t('attendance_request.photo_unavailable', 'الصورة غير متوفرة أو انتهت صلاحيتها'));
+        return;
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const w = window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      if (!w) URL.revokeObjectURL(objectUrl);
+      else setTimeout(() => URL.revokeObjectURL(objectUrl), 120000);
+    } catch {
+      window.alert(t('attendance_request.photo_unavailable', 'الصورة غير متوفرة أو انتهت صلاحيتها'));
+    }
+  }, [t]);
 
   const refreshActiveSurprise = useCallback(async () => {
     if (!canActivateSurprise) return;
@@ -307,15 +331,16 @@ export default function AttendanceList() {
                       <span className="material-icons-round text-base">map</span>
                       {t('attendance_request.show_on_map', 'إظهار على الخارطة')}
                     </a>
-                    <a
-                      href={`/${r.photo_path}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn-ghost text-xs"
-                    >
-                      <span className="material-icons-round text-base">image</span>
-                      {t('attendance_request.view_photo', 'عرض الصورة')}
-                    </a>
+                    {(Number(r.has_photo) === 1 || r.photo_path) ? (
+                      <button
+                        type="button"
+                        className="btn-ghost text-xs"
+                        onClick={() => openAttendanceRequestPhoto(r.id)}
+                      >
+                        <span className="material-icons-round text-base">image</span>
+                        {t('attendance_request.view_photo', 'عرض الصورة')}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="btn-primary text-xs"

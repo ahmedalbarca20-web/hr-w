@@ -1,6 +1,10 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const { Op } = require('sequelize');
+const { sequelize, dialect } = require('../config/db');
+const { getUploadsRoot } = require('../config/upload.paths');
 const AttendanceRequest = require('../models/attendance_request.model');
 const Attendance = require('../models/attendance.model');
 const Employee = require('../models/employee.model');
@@ -11,15 +15,64 @@ const { ymdInTimeZone, DEFAULT_IANA } = require('../utils/timezone');
 const badReq = (msg) => Object.assign(new Error(msg), { statusCode: 400, code: 'VALIDATION_ERROR' });
 const notFound = (msg) => Object.assign(new Error(msg), { statusCode: 404, code: 'NOT_FOUND' });
 
+const PENDING_PHOTO_TTL_MS = 24 * 60 * 60 * 1000;
+
+function hasPhotoSqlFragment() {
+  const bin = dialect === 'postgres'
+    ? '(photo_binary IS NOT NULL AND octet_length(photo_binary) > 0)'
+    : '(photo_binary IS NOT NULL AND length(photo_binary) > 0)';
+  return `(CASE WHEN ${bin} OR (photo_path IS NOT NULL AND photo_path != '') THEN 1 ELSE 0 END)`;
+}
+
+/** Remove photo bytes / file for one request (idempotent). */
+async function stripAttendanceRequestPhoto(requestId) {
+  const row = await AttendanceRequest.unscoped().findByPk(requestId, {
+    attributes: ['id', 'photo_path'],
+  });
+  if (!row) return;
+  const rel = row.get('photo_path');
+  if (rel) {
+    try {
+      const clean = String(rel).replace(/^[/\\]?uploads[/\\]/i, '').replace(/\\/g, path.sep);
+      const full = path.join(getUploadsRoot(), clean);
+      if (fs.existsSync(full)) fs.unlinkSync(full);
+    } catch {
+      /* ignore */
+    }
+  }
+  await AttendanceRequest.unscoped().update(
+    { photo_binary: null, photo_mime: null, photo_path: null },
+    { where: { id: requestId } },
+  );
+}
+
+/** Pending requests older than 24h lose their photo (per retention policy). */
+async function purgeExpiredPendingPhotos() {
+  const cutoff = new Date(Date.now() - PENDING_PHOTO_TTL_MS);
+  const stale = await AttendanceRequest.findAll({
+    where: { status: 'PENDING', created_at: { [Op.lt]: cutoff } },
+    attributes: ['id'],
+  });
+  await Promise.all(stale.map((r) => stripAttendanceRequestPhoto(r.id)));
+}
+
 async function companyTz(company_id) {
   const co = await Company.findByPk(company_id, { attributes: ['timezone'] });
   return (co?.timezone && String(co.timezone).trim()) || DEFAULT_IANA;
 }
 
-async function submitRequest(company_id, employee_id, data, photoPath) {
+/**
+ * @param {object} photo { buffer: Buffer, mime: string }
+ */
+async function submitRequest(company_id, employee_id, data, photo) {
+  await purgeExpiredPendingPhotos();
+
   const emp = await Employee.findOne({ where: { id: employee_id, company_id }, attributes: ['id'] });
   if (!emp) throw badReq('Employee not found in this company');
-  if (!photoPath) throw badReq('Photo is required');
+  const buf = photo?.buffer;
+  if (!Buffer.isBuffer(buf) || buf.length < 1) throw badReq('Photo is required');
+  const mime = String(photo?.mime || '').trim();
+  if (!/^image\/(jpeg|jpg|png|webp)$/i.test(mime)) throw badReq('Invalid photo type');
 
   const lat = Number(data.gps_latitude);
   const lng = Number(data.gps_longitude);
@@ -41,7 +94,9 @@ async function submitRequest(company_id, employee_id, data, photoPath) {
     gps_latitude: lat,
     gps_longitude: lng,
     gps_accuracy_m: acc,
-    photo_path: photoPath,
+    photo_path: null,
+    photo_binary: buf,
+    photo_mime: mime,
     note: data.note || null,
     status: 'PENDING',
   });
@@ -49,8 +104,13 @@ async function submitRequest(company_id, employee_id, data, photoPath) {
 }
 
 async function listRequests(company_id, user, { page = 1, limit = 20, status, employee_id, from, to } = {}) {
-  const role = (user?.role || '').toString().toUpperCase();
-  const privileged = ['ADMIN', 'HR', 'SUPER_ADMIN'].includes(role);
+  await purgeExpiredPendingPhotos();
+
+  const roleRaw = user?.role;
+  const role = typeof roleRaw === 'object' && roleRaw?.name
+    ? String(roleRaw.name).toUpperCase()
+    : String(roleRaw || '').toUpperCase();
+  const privileged = ['ADMIN', 'HR', 'SUPER_ADMIN'].includes(role) || Boolean(user?.is_super_admin);
   const where = { company_id };
   if (!privileged && user?.employee_id) where.employee_id = user.employee_id;
   if (privileged && employee_id) where.employee_id = employee_id;
@@ -63,6 +123,10 @@ async function listRequests(company_id, user, { page = 1, limit = 20, status, em
 
   const { rows, count } = await AttendanceRequest.findAndCountAll({
     where,
+    attributes: {
+      exclude: ['photo_binary'],
+      include: [[sequelize.literal(hasPhotoSqlFragment()), 'has_photo']],
+    },
     include: [{ model: Employee, as: 'employee', attributes: ['id', 'first_name', 'last_name', 'employee_number'] }],
     order: [['created_at', 'DESC']],
     ...paginate(page, limit),
@@ -71,52 +135,54 @@ async function listRequests(company_id, user, { page = 1, limit = 20, status, em
 }
 
 async function reviewRequest(id, company_id, reviewer_id, { status, rejection_reason }) {
-  const req = await AttendanceRequest.findOne({ where: { id, company_id } });
-  if (!req) throw notFound('Attendance request not found');
-  if (req.status !== 'PENDING') throw badReq('Request is no longer pending');
+  const reqRow = await AttendanceRequest.findOne({ where: { id, company_id } });
+  if (!reqRow) throw notFound('Attendance request not found');
+  if (reqRow.status !== 'PENDING') throw badReq('Request is no longer pending');
 
   if (status === 'REJECTED') {
-    await req.update({
+    await reqRow.update({
       status: 'REJECTED',
       reviewed_by: reviewer_id,
       reviewed_at: new Date(),
       rejection_reason: rejection_reason || null,
     });
-    return req.reload();
+    await stripAttendanceRequestPhoto(reqRow.id);
+    return reqRow.reload();
   }
 
   const [att] = await Attendance.findOrCreate({
-    where: { company_id, employee_id: req.employee_id, work_date: req.work_date },
+    where: { company_id, employee_id: reqRow.employee_id, work_date: reqRow.work_date },
     defaults: {
       company_id,
-      employee_id: req.employee_id,
-      work_date: req.work_date,
+      employee_id: reqRow.employee_id,
+      work_date: reqRow.work_date,
       status: 'PRESENT',
       source: 'MANUAL',
-      check_in: req.request_type === 'CHECK_IN' ? req.request_time : null,
-      check_out: req.request_type === 'CHECK_OUT' ? req.request_time : null,
+      check_in: reqRow.request_type === 'CHECK_IN' ? reqRow.request_time : null,
+      check_out: reqRow.request_type === 'CHECK_OUT' ? reqRow.request_time : null,
       notes: 'Approved from mobile attendance request',
       created_by: reviewer_id,
     },
   });
 
-  if (req.request_type === 'CHECK_IN') {
+  if (reqRow.request_type === 'CHECK_IN') {
     if (att.check_in) throw badReq('Employee already has check-in for this date');
-    await att.update({ check_in: req.request_time, status: 'PRESENT' });
+    await att.update({ check_in: reqRow.request_time, status: 'PRESENT' });
   } else {
     if (!att.check_in) throw badReq('Cannot approve check-out before check-in exists');
     if (att.check_out) throw badReq('Employee already has check-out for this date');
-    const mins = Math.max(0, Math.round((new Date(req.request_time) - new Date(att.check_in)) / 60000));
-    await att.update({ check_out: req.request_time, total_minutes: mins });
+    const mins = Math.max(0, Math.round((new Date(reqRow.request_time) - new Date(att.check_in)) / 60000));
+    await att.update({ check_out: reqRow.request_time, total_minutes: mins });
   }
 
-  await req.update({
+  await reqRow.update({
     status: 'APPROVED',
     reviewed_by: reviewer_id,
     reviewed_at: new Date(),
     rejection_reason: null,
   });
-  return req.reload();
+  await stripAttendanceRequestPhoto(reqRow.id);
+  return reqRow.reload();
 }
 
 module.exports = { submitRequest, listRequests, reviewRequest };

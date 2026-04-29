@@ -214,6 +214,7 @@ async function pushLogs(device, logs, rawBody) {
   const activeSurpriseEvent = await surpriseAttendanceSvc.getActive(company_id);
 
   const result = { total: logs.length, accepted: 0, duplicates: 0, unresolved: 0, errors: [] };
+  const ALLOWED_EVENT_TYPES = new Set(['CHECK_IN', 'CHECK_OUT', 'VERIFY', 'ALARM', 'OTHER']);
 
   // Pre-build an employee lookup map: card_number → employee_id
   // Devices typically store an enrolment ID that matches employee_number.
@@ -257,7 +258,16 @@ async function pushLogs(device, logs, rawBody) {
   for (const log of logs) {
     try {
       const card_number = normalizeBioId(log.card_number);
-      const event_type  = (log.event_type || 'CHECK_IN').toUpperCase();
+      const event_type_raw = String(log.event_type || '').trim().toUpperCase();
+      if (!event_type_raw) {
+        result.errors.push({ card_number, reason: 'Missing event_type (default values disabled)' });
+        continue;
+      }
+      if (!ALLOWED_EVENT_TYPES.has(event_type_raw)) {
+        result.errors.push({ card_number, reason: `Invalid event_type: ${event_type_raw}` });
+        continue;
+      }
+      const event_type  = event_type_raw;
       const event_time  = new Date(log.event_time);
 
       if (isNaN(event_time.getTime())) {
@@ -1030,8 +1040,8 @@ function zkAttendanceToPushLog(row, nameByPin = null) {
 
   const state = extractZkVerifyState(row);
   const hasState = Number.isFinite(state);
-  const event_type = hasState ? mapZkVerifyStateToEventType(state) : 'CHECK_IN';
-  if (!hasState) raw.zk_attendance.note = 'No usable verify_state in row; default CHECK_IN';
+  if (!hasState) return null;
+  const event_type = mapZkVerifyStateToEventType(state);
 
   const out = {
     card_number,

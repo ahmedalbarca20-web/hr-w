@@ -16,6 +16,13 @@ const shouldForceSameOriginApi = () => {
 
 const apiBase = shouldForceSameOriginApi() ? `${currentOrigin}/api` : (rawApiBase || '/api');
 
+/** Resolved API base for authenticated `fetch` (same rules as axios `baseURL`). */
+export function getResolvedApiBaseUrl() {
+  if (!isBrowser) return rawApiBase || '/api';
+  if (shouldForceSameOriginApi()) return `${currentOrigin}/api`;
+  return rawApiBase || '/api';
+}
+
 if (import.meta.env.PROD && (apiBase === '/api' || apiBase.startsWith('/'))) {
   // eslint-disable-next-line no-console
   console.warn(
