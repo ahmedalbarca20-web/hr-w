@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useLang } from '../../context/LangContext';
 import { useSidebar } from '../../context/SidebarContext';
 import { useAuth } from '../../context/AuthContext';
+import { enableWebPushNow } from '../../utils/webPush';
 import clsx from 'clsx';
 
 /* Keys shown under "Main" (single flat links, no duplicate reports center). */
@@ -138,6 +139,8 @@ export default function Sidebar() {
   const { isRTL } = useLang();
   const { open, close, isDesktop } = useSidebar();
   const { user, hasFeature } = useAuth();
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMsg, setPushMsg] = useState('');
   const roleName = typeof user?.role === 'object' ? user?.role?.name : user?.role;
   const isSuperAdmin = roleName === 'SUPER_ADMIN' || user?.is_super_admin;
   const isAdminOrHr = ['ADMIN', 'HR', 'SUPER_ADMIN'].includes(roleName);
@@ -179,6 +182,30 @@ export default function Sidebar() {
 
   const hidden = !isDesktop && !open;
 
+  const handleEnablePushMobile = useCallback(async () => {
+    setPushBusy(true);
+    setPushMsg('');
+    try {
+      await enableWebPushNow();
+      setPushMsg(t('notifications.enabled', 'تم تفعيل التنبيهات على هذا الجهاز'));
+    } catch (e) {
+      const code = e?.message || '';
+      if (code === 'permission_denied') {
+        setPushMsg(t('notifications.denied', 'تم رفض الإذن. فعّل الإشعارات من إعدادات المتصفح.'));
+      } else if (code === 'server_not_configured') {
+        setPushMsg(t('notifications.server_not_configured', 'الخادم غير مهيأ للتنبيهات.'));
+      } else if (code === 'company_context_required') {
+        setPushMsg(t('notifications.company_required', 'اختر شركة أولاً ثم أعد المحاولة.'));
+      } else if (code === 'secure_context_required') {
+        setPushMsg(t('notifications.secure_required', 'التنبيهات تحتاج HTTPS.'));
+      } else {
+        setPushMsg(t('notifications.enable_failed', 'تعذر تفعيل التنبيهات حالياً.'));
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  }, [t]);
+
   return (
     <>
       {!isDesktop && open && (
@@ -208,6 +235,41 @@ export default function Sidebar() {
             </div>
           </div>
         </div>
+
+        {!isDesktop && (
+          <div className="px-3 pb-3 flex-shrink-0">
+            <button
+              type="button"
+              onClick={handleEnablePushMobile}
+              disabled={pushBusy}
+              className={clsx(
+                'w-full rounded-xl border border-white/25 bg-white/15 px-3 py-3.5 text-white shadow-lg',
+                'hover:bg-white/25 active:scale-[0.99] transition disabled:opacity-55 disabled:active:scale-100',
+                'flex items-center gap-3',
+                isRTL && 'flex-row-reverse text-right',
+              )}
+            >
+              <span className="flex size-11 flex-shrink-0 items-center justify-center rounded-lg bg-brand/90 text-white">
+                <span className={clsx('material-icons-round text-2xl', pushBusy && 'animate-spin')}>
+                  {pushBusy ? 'sync' : 'notifications_active'}
+                </span>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold leading-snug">
+                  {t('notifications.enable_on_device_title', 'تفعيل تنبيهات الجوال')}
+                </span>
+                <span className="mt-0.5 block text-[11px] font-normal text-white/70 leading-snug">
+                  {t('notifications.enable_on_device_hint', 'البصمة الاضطرارية والبصمة المفاجئة — حتى مع إغلاق التبويب')}
+                </span>
+              </span>
+            </button>
+            {pushMsg && (
+              <p className={clsx('mt-2 rounded-lg bg-black/25 px-2.5 py-2 text-[11px] leading-relaxed text-white/85', isRTL && 'text-right')}>
+                {pushMsg}
+              </p>
+            )}
+          </div>
+        )}
 
         <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-0.5" style={{ scrollbarWidth: 'thin' }}>
           <SectionLabel label={t('nav_group.main')} />

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLang } from '../../context/LangContext';
 import { useSidebar } from '../../context/SidebarContext';
+import { enableWebPushNow } from '../../utils/webPush';
 import clsx from 'clsx';
 
 export default function Header({ title }) {
@@ -13,6 +14,8 @@ export default function Header({ title }) {
   const { toggle: toggleSidebar, isDesktop } = useSidebar();
   const navigate          = useNavigate();
   const [open, setOpen]   = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMsg, setPushMsg] = useState('');
   const ref               = useRef(null);
 
   // Close dropdown on outside click
@@ -25,6 +28,30 @@ export default function Header({ title }) {
   const handleLogout = async () => {
     await logout();
     navigate('/login');
+  };
+
+  const handleEnablePush = async () => {
+    setPushBusy(true);
+    setPushMsg('');
+    try {
+      await enableWebPushNow();
+      setPushMsg(t('notifications.enabled', 'تم تفعيل التنبيهات على هذا الجهاز'));
+    } catch (e) {
+      const code = e?.message || '';
+      if (code === 'permission_denied') {
+        setPushMsg(t('notifications.denied', 'تم رفض الإذن. فعّل الإشعارات من إعدادات المتصفح.'));
+      } else if (code === 'server_not_configured') {
+        setPushMsg(t('notifications.server_not_configured', 'الخادم غير مهيأ للتنبيهات.'));
+      } else if (code === 'company_context_required') {
+        setPushMsg(t('notifications.company_required', 'اختر شركة أولاً ثم أعد المحاولة.'));
+      } else if (code === 'secure_context_required') {
+        setPushMsg(t('notifications.secure_required', 'التنبيهات تحتاج HTTPS.'));
+      } else {
+        setPushMsg(t('notifications.enable_failed', 'تعذر تفعيل التنبيهات حالياً.'));
+      }
+    } finally {
+      setPushBusy(false);
+    }
   };
 
   // Responsive header positioning
@@ -111,6 +138,26 @@ export default function Header({ title }) {
                 isRTL ? 'left-0' : 'right-0',
               )}
             >
+              {isDesktop && (
+                <>
+                  <button
+                    onClick={handleEnablePush}
+                    disabled={pushBusy}
+                    className={clsx(
+                      'w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition disabled:opacity-60',
+                      isRTL && 'flex-row-reverse',
+                    )}
+                  >
+                    <span className="material-icons-round text-base text-gray-400">
+                      {pushBusy ? 'sync' : 'notifications_active'}
+                    </span>
+                    {t('notifications.enable_on_device', 'تفعيل التنبيهات على هذا الجهاز')}
+                  </button>
+                  {pushMsg && (
+                    <p className="px-4 pb-2 text-xs text-gray-500 leading-relaxed">{pushMsg}</p>
+                  )}
+                </>
+              )}
               <button
                 onClick={handleLogout}
                 className={clsx(
