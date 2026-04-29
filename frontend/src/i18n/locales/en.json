@@ -388,6 +388,26 @@
     "announcements":      "Announcements for you",
     "all_announcements":    "All announcements"
   },
+  "notifications": {
+    "enabled": "Notifications enabled on this device",
+    "enable_on_device": "Enable notifications on this device",
+    "enable_on_device_title": "Enable mobile notifications",
+    "enable_on_device_hint": "Emergency and surprise attendance alerts — even when the tab is closed",
+    "denied": "Permission denied. Enable notifications in the browser or site settings.",
+    "company_required": "Select a company first, then try again.",
+    "secure_required": "Notifications require a secure connection (HTTPS).",
+    "enable_failed": "Could not enable notifications right now.",
+    "server_not_configured": "The API server is not set up for Web Push. In Vercel, open your API/backend project (not the frontend), then Settings → Environment Variables, and add: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT. Run locally: npx web-push generate-vapid-keys, paste the keys, set VAPID_SUBJECT to mailto:you@domain, then redeploy the API.",
+    "err_not_supported": "This browser does not support Web Push this way. On iPhone: add the site to the Home Screen (PWA) and open it from the icon.",
+    "err_not_logged_in": "Session expired or not logged in. Sign in and try again.",
+    "err_session_expired": "Session expired. Refresh the page or sign in again.",
+    "err_forbidden": "No permission to register notifications in this context.",
+    "err_validation": "Invalid data. Refresh the page and try again.",
+    "err_server": "Server error while enabling notifications. Try again later.",
+    "err_network": "No internet connection or the server could not be reached.",
+    "err_sw": "Could not register the Service Worker. Open the site from the same URL (e.g. the PWA icon) and ensure sw.js is available.",
+    "err_subscription": "Could not create the push subscription. Try another browser or update the OS."
+  },
   "company": {
     "title":              "Companies",
     "add":                "Add Company",

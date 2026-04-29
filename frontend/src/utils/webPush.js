@@ -89,7 +89,7 @@ export function messageForWebPushError(t, err) {
     ],
     server_not_configured: [
       'notifications.server_not_configured',
-      'الخادم غير مهيأ للتنبيهات: أضف VAPID_PUBLIC_KEY و VAPID_PRIVATE_KEY و VAPID_SUBJECT في متغيرات بيئة الـ API.',
+      'خادم الـ API غير مهيأ لإشعارات المتصفح: أضف VAPID_PUBLIC_KEY وVAPID_PRIVATE_KEY وVAPID_SUBJECT في مشروع الـ API على Vercel (ليس الواجهة)، ثم npx web-push generate-vapid-keys وأعد نشر الـ API.',
     ],
     session_expired: [
       'notifications.err_session_expired',
