@@ -44,6 +44,8 @@ const readIntEnv = (name, fallback) => {
   return Number.isInteger(n) && n >= 0 ? n : fallback;
 };
 
+const isServerlessRuntime = process.env.VERCEL === '1' || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+
 /**
  * Default PG pool is intentionally small for serverless + Supabase session limits.
  * Can be overridden by env vars: DB_POOL_MAX / DB_POOL_MIN / DB_POOL_ACQUIRE_MS / DB_POOL_IDLE_MS.
@@ -57,6 +59,16 @@ const pool = {
   acquire: readIntEnv('DB_POOL_ACQUIRE_MS', 30000),
   idle: readIntEnv('DB_POOL_IDLE_MS', dialect === 'postgres' ? 5000 : 10000),
 };
+
+// Guardrail: in serverless Postgres deployments, one process opening many pooled
+// connections quickly exhausts provider session limits (EMAXCONNSESSION).
+if (dialect === 'postgres' && (isProd || isServerlessRuntime)) {
+  if (pool.max > 1) {
+    console.warn(`[DB] DB_POOL_MAX=${pool.max} is too high for serverless Postgres; forcing to 1.`);
+  }
+  pool.max = 1;
+  if (pool.min > 0) pool.min = 0;
+}
 
 let sequelize;
 
