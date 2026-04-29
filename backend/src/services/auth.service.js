@@ -138,8 +138,12 @@ const login = async (email, password, company_id = null, company_password = null
     throw err;
   }
 
-  // Tenant guard: if user belongs to a company, enforce active contract & optional company password
-  if (user.company_id !== null) {
+  const isSuperAdmin = String(user?.role?.name || '').toUpperCase() === SUPER_ADMIN_ROLE;
+
+  // Tenant guard: non-super-admin users must satisfy company status/password checks.
+  // Super admin login should never require company password, even on legacy rows
+  // where company_id is still populated.
+  if (user.company_id !== null && !isSuperAdmin) {
     const company = await enforceCompanyActive(user.company_id);
 
     if (company.login_password_hash) {
