@@ -206,6 +206,25 @@ const connectDB = async () => {
       });
     }
   };
+  const ensureCompanyFeaturesTable = async () => {
+    try {
+      await qi.describeTable('company_features');
+    } catch {
+      await qi.createTable('company_features', {
+        id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, autoIncrement: true, primaryKey: true },
+        company_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+        feature_key: { type: DataTypes.STRING(60), allowNull: false },
+        is_enabled: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+        created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal('CURRENT_TIMESTAMP') },
+        updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal('CURRENT_TIMESTAMP') },
+      });
+      await qi.addIndex('company_features', ['company_id'], { name: 'company_features_company_id_idx' });
+      await qi.addIndex('company_features', ['company_id', 'feature_key'], {
+        unique: true,
+        name: 'company_features_company_feature_uq',
+      });
+    }
+  };
 
   const ensureAttendanceRequestsTable = async () => {
     const blobType = dialect === 'postgres' ? DataTypes.BLOB : DataTypes.BLOB('long');
@@ -318,6 +337,7 @@ const connectDB = async () => {
     await ensureAttendanceSurpriseColumns();
     await ensureAttendanceRequestsTable();
     await ensurePushSubscriptionsTable();
+    await ensureCompanyFeaturesTable();
     // Sync with force:false — creates only missing tables, never drops
     await sequelize.sync({ force: false });
     console.log('[DB] SQLite database synced and ready.');
@@ -330,6 +350,7 @@ const connectDB = async () => {
     await ensureAttendanceSurpriseColumns();
     await ensureAttendanceRequestsTable();
     await ensurePushSubscriptionsTable();
+    await ensureCompanyFeaturesTable();
     if (dialect === 'postgres') {
       console.log('[DB] Connected to PostgreSQL (Supabase / PG).');
     } else {
