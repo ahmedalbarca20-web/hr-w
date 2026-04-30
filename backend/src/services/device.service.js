@@ -21,6 +21,33 @@ const notFound  = (id) => Object.assign(new Error(`Device ${id} not found`), { s
 const conflict  = (msg) => Object.assign(new Error(msg), { statusCode: 409, code: 'CONFLICT' });
 const badReq    = (msg) => Object.assign(new Error(msg), { statusCode: 400, code: 'VALIDATION_ERROR' });
 
+function isPrivateIpv4(host) {
+  const h = String(host || '').trim();
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!m) return false;
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 169 && b === 254) return true;
+  return false;
+}
+
+function isLikelyLanOnlyHost(host) {
+  const h = String(host || '').trim().toLowerCase();
+  if (!h) return false;
+  if (isPrivateIpv4(h)) return true;
+  if (h === 'localhost' || h.endsWith('.local')) return true;
+  return false;
+}
+
+function cloudLanHint(host) {
+  return `لا يمكن لخادم سحابي (Vercel) الوصول مباشرة إلى جهاز LAN (${host}). `
+    + 'شغّل الـ API داخل نفس شبكة جهاز البصمة، أو استخدم VPN/Tunnel/Agent وسيط داخل الشبكة.';
+}
+
 /** Normalize PIN / card / UID for ZK name map (same idea as pushLogs employee lookup). */
 function normZkKey(v) {
   return String(v || '').trim().toUpperCase();
@@ -603,6 +630,16 @@ function buildProbeUrls(host, userPort) {
  * Port 4370 is often machine protocol only — we also try 80/8080 automatically.
  */
 async function probeDeviceConnection({ ip_address, port }) {
+  if (process.env.VERCEL === '1' && isLikelyLanOnlyHost(ip_address)) {
+    return {
+      ok: false,
+      serial_number: null,
+      firmware_version: null,
+      hint: cloudLanHint(ip_address),
+      ports_tried: [],
+      message: cloudLanHint(ip_address),
+    };
+  }
   const scanUrls = buildProbeUrls(ip_address, port);
   let lastErr     = null;
   let sawHttp     = false;
@@ -709,6 +746,17 @@ async function simulateTestIngest(device_id, company_id, { card_number = 'TEST-P
 
 /** zkteco-js TCP/UDP read — arbitrary IP (e.g. from device form before save). */
 async function probeZkSocket(body) {
+  if (process.env.VERCEL === '1' && isLikelyLanOnlyHost(body.ip_address)) {
+    return {
+      ok: false,
+      connection_type: null,
+      errors: [{ message: cloudLanHint(body.ip_address), code: 'LAN_UNREACHABLE_FROM_CLOUD' }],
+      info: null,
+      user_count_on_device: null,
+      user_sample: [],
+      attendance_size: null,
+    };
+  }
   return zktecoSocket.probeSnapshot({
     ip                       : body.ip_address,
     port                     : body.port,
@@ -764,6 +812,9 @@ async function listZkUsersOnDevice(device_id, company_id, query = {}) {
   if (dev.status === 'OFFLINE') throw badReq('Cannot read device users: device is offline');
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+  if (process.env.VERCEL === '1' && isLikelyLanOnlyHost(host)) {
+    throw Object.assign(new Error(cloudLanHint(host)), { statusCode: 422, code: 'LAN_UNREACHABLE_FROM_CLOUD' });
+  }
   const port = query.port != null && Number.isFinite(Number(query.port)) && Number(query.port) > 0
     ? Number(query.port)
     : 4370;
@@ -858,6 +909,9 @@ async function setZkDeviceUserPrivilege(device_id, company_id, body = {}) {
   if (dev.status === 'OFFLINE') throw badReq('Cannot modify device: device is offline');
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+  if (process.env.VERCEL === '1' && isLikelyLanOnlyHost(host)) {
+    throw Object.assign(new Error(cloudLanHint(host)), { statusCode: 422, code: 'LAN_UNREACHABLE_FROM_CLOUD' });
+  }
 
   /** فك قفل الشاشة أولاً (بعد سحب بصمات أو جلسة سابقة قد تُبقي الجهاز في وضع الإيقاف). */
   await zktecoSocket.unlockZkDevice({
@@ -936,6 +990,9 @@ async function unlockDeviceZkSession(device_id, company_id, body = {}) {
   if (dev.status === 'OFFLINE') throw badReq('Cannot reach device: device is offline');
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+  if (process.env.VERCEL === '1' && isLikelyLanOnlyHost(host)) {
+    throw Object.assign(new Error(cloudLanHint(host)), { statusCode: 422, code: 'LAN_UNREACHABLE_FROM_CLOUD' });
+  }
 
   const res = await zktecoSocket.unlockZkDevice({
     ip                : host,
@@ -1080,6 +1137,9 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
   if (dev.status === 'OFFLINE') throw badReq('Cannot pull attendance: device is marked offline');
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+  if (process.env.VERCEL === '1' && isLikelyLanOnlyHost(host)) {
+    throw Object.assign(new Error(cloudLanHint(host)), { statusCode: 422, code: 'LAN_UNREACHABLE_FROM_CLOUD' });
+  }
 
   const co = await Company.findByPk(company_id, { attributes: ['timezone'] }).catch(() => null);
   const companyTz = (co && co.timezone) ? String(co.timezone).trim() : 'Asia/Baghdad';
