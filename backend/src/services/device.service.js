@@ -730,6 +730,125 @@ async function probeZkSocket(body) {
   });
 }
 
+/** One-shot diagnostics: env + ZK path + HTTP probe + optional DTR bio-sync (same body family as probe-zk-socket). */
+async function debugZkConnection(body) {
+  const started = Date.now();
+  const hints = [];
+  const hostStr = String(body.ip_address || '').trim();
+  const privateLan = /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.|127\.)/.test(hostStr);
+  if (privateLan && process.env.VERCEL === '1') {
+    hints.push('الخادم على Vercel — لا يمكن عادةً الوصول إلى عنوان LAN (192.168.x) من هذه الدالة.');
+  }
+  const dtrBase = dtrBridgeBaseUrl();
+  if (!dtrBase && privateLan && process.env.NODE_ENV === 'production' && process.env.VERCEL !== '1') {
+    hints.push('تأكد أن Node الذي يشغّل الـ API على نفس LAN الجهاز (لا سيرفر عن بُعد بدون VPN).');
+  }
+  if (dtrBase && !body.force_direct_zk) {
+    hints.push('ZK عبر DTR_ZKTECO_API_URL. أضف "force_direct_zk": true لمقارنة zkteco-js مباشرة إلى IP الجهاز من هذه العملية.');
+  } else if (dtrBase && body.force_direct_zk) {
+    hints.push('force_direct_zk نشط — يُتجاوز الجسر مؤقتاً ويُجرّب zkteco-js مباشرة.');
+  }
+
+  const zkLabel = dtrBase && !body.force_direct_zk ? 'dtr_bridge_probe' : 'zkteco_js_direct';
+  const zkT0 = Date.now();
+  let zk = { ok: false, errors: [{ message: 'not run' }] };
+  try {
+    if (dtrBase && !body.force_direct_zk) {
+      zk = await dtrZkBridge.probeSnapshotFromBridge(dtrBase, body);
+    } else {
+      zk = await zktecoSocket.probeSnapshot({
+        ip                       : body.ip_address,
+        port                     : body.port,
+        socket_timeout_ms        : body.socket_timeout_ms,
+        udp_local_port           : body.udp_local_port,
+        include_users            : body.include_users,
+        max_users                : body.max_users,
+        include_attendance_size  : body.include_attendance_size,
+      });
+    }
+  } catch (e) {
+    zk = { ok: false, errors: [{ message: e.message, code: e.code }] };
+  }
+  const zkMs = Date.now() - zkT0;
+
+  const httpT0 = Date.now();
+  let http = null;
+  let httpErr = null;
+  try {
+    http = await probeDeviceConnection({ ip_address: body.ip_address, port: body.port });
+  } catch (e) {
+    httpErr = e.message;
+    http = { ok: false, message: e.message };
+  }
+  const httpMs = Date.now() - httpT0;
+
+  let dtr_bio_sync = null;
+  if (dtrBase) {
+    const t = Date.now();
+    try {
+      const payload = await dtrZkBridge.fetchBioSyncPayload(dtrBase);
+      dtr_bio_sync = {
+        ok: Boolean(payload),
+        ms: Date.now() - t,
+        logs: payload?.logs?.length ?? 0,
+        users: payload?.users?.length ?? 0,
+        has_device_details: Boolean(payload?.device_details),
+      };
+    } catch (e) {
+      dtr_bio_sync = { ok: false, ms: Date.now() - t, error: e.message };
+    }
+  }
+
+  const serialFromZk = zk?.serial_number != null && String(zk.serial_number).trim() !== '';
+  const serialFromHttp = http?.ok && http?.serial_number;
+
+  return {
+    environment: {
+      NODE_ENV: process.env.NODE_ENV || '(unset)',
+      VERCEL: process.env.VERCEL === '1',
+      DTR_ZKTECO_API_URL_SET: Boolean(dtrBase),
+      ...(dtrBase
+        ? { DTR_ZKTECO_API_URL_HOST: (() => { try { return new URL(dtrBase).hostname; } catch { return null; } })() }
+        : {}),
+    },
+    at: new Date().toISOString(),
+    total_ms: Date.now() - started,
+    zk_path_used: zkLabel,
+    zk_socket: {
+      ms: zkMs,
+      ok: Boolean(zk?.ok),
+      serial_number: zk?.serial_number ?? null,
+      firmware_version: zk?.firmware_version ?? null,
+      connection_type: zk?.connection_type ?? null,
+      user_count_on_device: zk?.user_count_on_device ?? null,
+      errors: zk?.errors || [],
+    },
+    http_web_probe: {
+      ms: httpMs,
+      ok: Boolean(http?.ok),
+      serial_number: http?.serial_number ?? null,
+      probed_url: http?.probed_url ?? null,
+      hint: http?.hint ?? null,
+      message: http?.message ?? null,
+      ports_tried: http?.ports_tried ?? null,
+      fetch_error: httpErr,
+    },
+    dtr_bio_sync,
+    analysis: {
+      can_fill_serial_from_zk: serialFromZk,
+      can_fill_serial_from_http: Boolean(serialFromHttp),
+      recommendation_ar: serialFromZk
+        ? 'بروتوكول ZK نجح — استخدم نفس الإعدادات في النموذج.'
+        : serialFromHttp
+          ? 'واجهة الويب تعمل — يمكن الاعتماد على اختبار HTTP أو إدخال السيريال يدوياً.'
+          : zk?.ok
+            ? 'ZK اتصل لكن بدون serial واضح — راجع errors أو جرّب force_direct_zk عكس الجسر.'
+            : 'فشل ZK وواجهة الويب — تحقق من IP والمنفذ والشبكة وجدار الحماية.',
+    },
+    hints_ar: hints,
+  };
+}
+
 /** zkteco-js read using `ip_address` stored on the device row. */
 async function readZkFromRegisteredDevice(device_id, company_id, overrides = {}) {
   const dev = await Device.findOne({
@@ -1357,6 +1476,7 @@ module.exports = {
   listEmployeesForDevicePicker,
   probeDeviceConnection,
   probeZkSocket,
+  debugZkConnection,
   readZkFromRegisteredDevice,
   listZkUsersOnDevice,
   importZkUsersToEmployees,

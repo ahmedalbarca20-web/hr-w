@@ -11,6 +11,7 @@ const {
   deviceUpdateSchema,
   deviceProbeSchema,
   deviceZkSocketProbeSchema,
+  deviceDebugZkConnectionSchema,
   deviceZkSocketByDeviceSchema,
   devicePushSchema,
   deviceLogListSchema,
@@ -51,6 +52,60 @@ function parseId(req, res) {
     return null;
   }
   return parsed.data;
+}
+
+function toIsoDateTime(v) {
+  if (!v) return null;
+  const raw = String(v).trim();
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (!Number.isNaN(d.getTime())) return d.toISOString();
+  const m = raw.match(/^(\d{4})[-/](\d{2})[-/](\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  const [, y, mo, da, h, mi, s = '00'] = m;
+  return new Date(`${y}-${mo}-${da}T${h}:${mi}:${s}Z`).toISOString();
+}
+
+function mapRawLogRow(row) {
+  if (!row || typeof row !== 'object') return null;
+  const card_number = String(
+    row.card_number
+      ?? row.card
+      ?? row.Card
+      ?? row.pin
+      ?? row.PIN
+      ?? row.user_id
+      ?? row.userId
+      ?? row.UserID
+      ?? row.enrollNumber
+      ?? '',
+  ).trim();
+  const event_time = toIsoDateTime(
+    row.event_time
+      ?? row.eventTime
+      ?? row.timestamp
+      ?? row.record_time
+      ?? row.DateTime
+      ?? row.datetime
+      ?? row.time,
+  );
+  if (!card_number || !event_time) return null;
+  return {
+    card_number,
+    event_type: 'CHECK_IN',
+    event_time,
+    raw: row,
+  };
+}
+
+function normalizeIncomingPushLogs(body) {
+  if (!body) return [];
+  if (Array.isArray(body.logs)) return body.logs;
+  if (Array.isArray(body.AttLog)) return body.AttLog.map(mapRawLogRow).filter(Boolean);
+  if (Array.isArray(body.attlog)) return body.attlog.map(mapRawLogRow).filter(Boolean);
+  if (Array.isArray(body.rows)) return body.rows.map(mapRawLogRow).filter(Boolean);
+  const one = mapRawLogRow(body);
+  return one ? [one] : [];
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -100,6 +155,14 @@ const probeZkSocket = asyncHandler(async (req, res) => {
     ? 'تمت قراءة الجهاز عبر zkteco-js (بروتوكول ZK).'
     : 'تعذّر الاتصال ببروتوكول الجهاز — راجع errors في الاستجابة.';
   sendSuccess(res, data, msg);
+});
+
+/** ZK + HTTP + env + optional DTR snapshot — for local troubleshooting only. */
+const debugZkConnection = asyncHandler(async (req, res) => {
+  const parsed = deviceDebugZkConnectionSchema.safeParse(req.body);
+  if (!parsed.success) return sendError(res, parsed.error.errors[0]?.message, 422, 'VALIDATION_ERROR');
+  const data = await svc.debugZkConnection(parsed.data);
+  sendSuccess(res, data, 'تقرير تشخيص الاتصال (ZK + HTTP + البيئة).');
 });
 
 const readZkFromDevice = asyncHandler(async (req, res) => {
@@ -245,7 +308,8 @@ const rotateApiKey = asyncHandler(async (req, res) => {
  * req.device is the Device record set by that middleware.
  */
 const push = asyncHandler(async (req, res) => {
-  const parsed = devicePushSchema.safeParse(req.body);
+  const normalizedLogs = normalizeIncomingPushLogs(req.body);
+  const parsed = devicePushSchema.safeParse({ logs: normalizedLogs });
   if (!parsed.success) return sendError(res, parsed.error.errors[0]?.message, 422, 'VALIDATION_ERROR');
 
   // Attach metadata to raw_payload for audit trail
@@ -253,6 +317,9 @@ const push = asyncHandler(async (req, res) => {
     received_at : new Date().toISOString(),
     remote_ip   : req.ip,
     device_serial: req.device.serial_number,
+    push_shape  : Array.isArray(req.body?.logs)
+      ? 'logs[]'
+      : (Array.isArray(req.body?.AttLog) || Array.isArray(req.body?.attlog) ? 'attlog[]' : 'single-or-unknown'),
   };
 
   const result = await svc.pushLogs(req.device, parsed.data.logs, req.body);
@@ -324,7 +391,7 @@ const reResolveLogs = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  listDevices, getDevice, listEmployeeOptions, probeConnection, probeZkSocket, readZkFromDevice, listZkDeviceUsers, importZkUsersToEmployees, setZkDeviceUserPrivilege, unlockDeviceZkSession, importZkAttendances, createDevice, updateDevice, deactivateDevice, rotateApiKey,
+  listDevices, getDevice, listEmployeeOptions, probeConnection, probeZkSocket, debugZkConnection, readZkFromDevice, listZkDeviceUsers, importZkUsersToEmployees, setZkDeviceUserPrivilege, unlockDeviceZkSession, importZkAttendances, createDevice, updateDevice, deactivateDevice, rotateApiKey,
   getPushConfig, testDeviceIngest,
   push, heartbeat,
   listLogs, getLog, reprocessLog, reResolveLogs,

@@ -17,12 +17,45 @@
 const { Device }            = require('../models/device.model');
 const { sendError }         = require('../utils/response');
 
+function firstNonEmpty(...values) {
+  for (const v of values) {
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s) return s;
+  }
+  return null;
+}
+
 async function authenticateDevice(req, res, next) {
-  const serial  = req.headers['x-device-serial'];
-  const apiKey  = req.headers['x-device-key'];
+  const bodyObj = req.body && typeof req.body === 'object' ? req.body : {};
+  const serial = firstNonEmpty(
+    req.headers['x-device-serial'],
+    req.query?.serial,
+    req.query?.serial_number,
+    req.query?.sn,
+    req.query?.SN,
+    bodyObj.serial,
+    bodyObj.serial_number,
+    bodyObj.sn,
+    bodyObj.SN,
+  );
+  const apiKey = firstNonEmpty(
+    req.headers['x-device-key'],
+    req.query?.key,
+    req.query?.api_key,
+    req.query?.token,
+    bodyObj.key,
+    bodyObj.api_key,
+    bodyObj.token,
+  );
 
   if (!serial || !apiKey) {
-    return sendError(res, 'Missing X-Device-Serial or X-Device-Key header', 401, 'DEVICE_UNAUTHORIZED');
+    return sendError(
+      res,
+      'Missing device credentials. Provide headers (X-Device-Serial + X-Device-Key) or query/body fields (SN/serial + key).',
+      401,
+      'DEVICE_UNAUTHORIZED',
+    );
   }
 
   // company_id context: optionally passed as X-Company-Id for super-admin testing,

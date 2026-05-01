@@ -10,6 +10,8 @@ export const createDevice   = (data)   => api.post('/devices', data);
 export const probeDeviceConnection = (data) => api.post('/devices/probe-connection', data);
 /** ZK binary protocol (zkteco-js) — TCP/UDP; optional fields: socket_timeout_ms, udp_local_port, include_users, max_users */
 export const probeZkSocket = (data) => api.post('/devices/probe-zk-socket', data);
+/** Combined diagnostics: ZK path + HTTP probe + runtime env hints. */
+export const debugZkConnection = (data) => api.post('/devices/debug-zk-connection', data);
 export const readZkFromDevice = (id, body) => api.post(`/devices/${id}/zk-socket-read`, body || {});
 /** Live users on device (ZK). Query: ?port=4370&include_password=true (PIN is sensitive; default off). */
 export const getDeviceZkUsers = (id, params) => api.get(`/devices/${id}/zk-device-users`, { params });

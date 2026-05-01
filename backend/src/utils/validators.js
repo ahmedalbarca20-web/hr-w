@@ -378,6 +378,13 @@ const deviceZkSocketProbeSchema = z.object({
   include_attendance_size: z.boolean().optional().default(false),
 });
 
+/** Local diagnostics: ZK + HTTP + optional DTR bridge snapshot (POST /api/devices/debug-zk-connection). */
+const deviceDebugZkConnectionSchema = deviceZkSocketProbeSchema.extend({
+  force_direct_zk: z.boolean().optional().default(false),
+  include_users: z.boolean().optional().default(false),
+  socket_timeout_ms: z.coerce.number().int().min(2000).max(60000).optional().default(14000),
+});
+
 /** Optional overrides when reading via registered device id (IP from DB). */
 const deviceZkSocketByDeviceSchema = z.object({
   port: z.coerce.number().int().min(1).max(65535).optional(),
@@ -617,6 +624,7 @@ module.exports = {
   deviceUpdateSchema,
   deviceProbeSchema,
   deviceZkSocketProbeSchema,
+  deviceDebugZkConnectionSchema,
   deviceZkSocketByDeviceSchema,
   devicePushSchema,
   deviceLogListSchema,

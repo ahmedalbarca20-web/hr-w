@@ -14,6 +14,7 @@
  *   GET    /employee-options       Active employees for sync picker (devices feature only)
  *   POST   /probe-connection       Test HTTP reachability & try to read serial (LAN)
  *   POST   /probe-zk-socket       ZK TCP/UDP via zkteco-js (serial, users sample, etc.)
+ *   POST   /debug-zk-connection   ZK + HTTP + env + optional DTR bio-sync (diagnostics)
  *   POST   /:id/zk-socket-read     Same as probe-zk-socket using saved device ip_address
  *   GET    /:id/zk-device-users    Live users from device (zkteco-js getUsers)
  *   POST   /:id/zk-import-users    Import selected device UIDs → employees (create/update)
@@ -62,6 +63,7 @@ r.post  ('/',           requireRole('ADMIN'),     ctrl.createDevice);
 r.get   ('/employee-options', requireRole(...HR_ADMIN), ctrl.listEmployeeOptions);
 r.post  ('/probe-connection', requireRole(...HR_ADMIN), ctrl.probeConnection);
 r.post  ('/probe-zk-socket', requireRole(...HR_ADMIN), ctrl.probeZkSocket);
+r.post  ('/debug-zk-connection', requireRole(...HR_ADMIN), ctrl.debugZkConnection);
 r.post  ('/:id/sync-users', requireRole(...HR_ADMIN), ctrl.syncUsers);
 r.post  ('/:id/zk-socket-read', requireRole(...HR_ADMIN), ctrl.readZkFromDevice);
 r.get   ('/:id/zk-device-users', requireRole(...HR_ADMIN), ctrl.listZkDeviceUsers);

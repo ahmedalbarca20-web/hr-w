@@ -5,9 +5,16 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   resolve: {
+    // Monorepo/workspace safety: force a single React instance.
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@': path.resolve(__dirname, './src'),
+      react: path.resolve(__dirname, '../node_modules/react'),
+      'react-dom': path.resolve(__dirname, '../node_modules/react-dom'),
     },
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom'],
   },
   server: {
     port: 3000,
