@@ -187,6 +187,10 @@ export default function DeviceForm() {
       const zkRes = await probeZkSocket({
         ip_address: form.ip_address.trim(),
         port: zkPort,
+        /** أسرع: جلب الرقم التسلسلي/الإصدار فقط — getUsers() على أجهزة كبيرة قد يستغرق 15–30 ثانية */
+        include_users: false,
+        include_attendance_size: false,
+        socket_timeout_ms: 7000,
       });
       let z = unwrapZkPayload(zkRes);
 

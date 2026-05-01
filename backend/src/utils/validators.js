@@ -369,7 +369,8 @@ const deviceUpdateSchema = deviceCreateSchema
 const deviceZkSocketProbeSchema = z.object({
   ip_address: deviceProbeNetworkHost,
   port: z.coerce.number().int().min(1).max(65535).optional().default(4370),
-  socket_timeout_ms: z.coerce.number().int().min(2000).max(60000).optional().default(8000),
+  /** Default lowered: zkteco-js may try TCP+UDP; unreachable hosts felt ~2× this before failing. */
+  socket_timeout_ms: z.coerce.number().int().min(2000).max(60000).optional().default(6500),
   udp_local_port: z.coerce.number().int().min(1024).max(65535).optional().default(5000),
   include_users: z.boolean().optional().default(true),
   max_users: z.coerce.number().int().min(1).max(500).optional().default(80),
