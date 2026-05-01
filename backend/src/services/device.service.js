@@ -12,10 +12,16 @@ const Employee      = require('../models/employee.model');
 const Company       = require('../models/company.model');
 const surpriseAttendanceSvc = require('./surprise_attendance.service');
 const zktecoSocket = require('./zktecoSocket.service');
+const dtrZkBridge = require('./dtrZktecoBridge.service');
 const { paginate, paginateResult } = require('../utils/pagination');
 const { DEFAULT_IANA } = require('../utils/timezone');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Base URL of [dtr.zkteco.api](https://github.com/itechxcellence/dtr.zkteco.api) on the LAN (or ngrok). When set, ZK reads use HTTP snapshot instead of TCP from this process. */
+function dtrBridgeBaseUrl() {
+  return String(process.env.DTR_ZKTECO_API_URL || '').trim().replace(/\/$/, '');
+}
 
 const notFound  = (id) => Object.assign(new Error(`Device ${id} not found`), { statusCode: 404, code: 'NOT_FOUND' });
 const conflict  = (msg) => Object.assign(new Error(msg), { statusCode: 409, code: 'CONFLICT' });
@@ -709,6 +715,10 @@ async function simulateTestIngest(device_id, company_id, { card_number = 'TEST-P
 
 /** zkteco-js TCP/UDP read — arbitrary IP (e.g. from device form before save). */
 async function probeZkSocket(body) {
+  const bridge = dtrBridgeBaseUrl();
+  if (bridge) {
+    return dtrZkBridge.probeSnapshotFromBridge(bridge, body);
+  }
   return zktecoSocket.probeSnapshot({
     ip                       : body.ip_address,
     port                     : body.port,
@@ -727,6 +737,10 @@ async function readZkFromRegisteredDevice(device_id, company_id, overrides = {})
     attributes: ['id', 'ip_address', 'name'],
   });
   if (!dev) throw notFound(device_id);
+  const bridge = dtrBridgeBaseUrl();
+  if (bridge) {
+    return dtrZkBridge.probeSnapshotFromBridge(bridge, overrides);
+  }
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
   return zktecoSocket.probeSnapshot({
@@ -761,6 +775,27 @@ async function listZkUsersOnDevice(device_id, company_id, query = {}) {
     attributes: ['id', 'ip_address', 'name', 'status', 'serial_number'],
   });
   if (!dev) throw notFound(device_id);
+
+  const bridge = dtrBridgeBaseUrl();
+  if (bridge) {
+    const payload = await dtrZkBridge.fetchBioSyncPayload(bridge);
+    if (!payload) {
+      throw Object.assign(
+        new Error('DTR bridge has no snapshot yet. Run dtr.zkteco.api on the LAN and wait for the first poll, or check DEVICE_IP in the bridge .env.'),
+        { statusCode: 502, code: 'ZK_BRIDGE_EMPTY' },
+      );
+    }
+    const rawUsers = dtrZkBridge.dtrUsersToZkUserSample(payload.users || []);
+    const includePassword = query.include_password === true;
+    return {
+      device               : { id: dev.id, name: dev.name, serial_number: dev.serial_number },
+      users                : sanitizeZkUserRows(rawUsers, includePassword),
+      user_count_on_device : rawUsers.length,
+      attendance_size      : payload.device_details?.attendanceSize ?? null,
+      info                 : payload.device_details?.info ?? payload.device_details ?? null,
+    };
+  }
+
   if (dev.status === 'OFFLINE') throw badReq('Cannot read device users: device is offline');
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
@@ -1077,18 +1112,45 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
     attributes: ['id', 'ip_address', 'name', 'status', 'mode', 'company_id', 'serial_number'],
   });
   if (!dev) throw notFound(device_id);
-  if (dev.status === 'OFFLINE') throw badReq('Cannot pull attendance: device is marked offline');
+
+  const bridge = dtrBridgeBaseUrl();
   const host = (dev.ip_address || '').trim();
-  if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+
+  if (!bridge) {
+    if (dev.status === 'OFFLINE') throw badReq('Cannot pull attendance: device is marked offline');
+    if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+  }
 
   const co = await Company.findByPk(company_id, { attributes: ['timezone'] }).catch(() => null);
   const companyTz = (co && co.timezone) ? String(co.timezone).trim() : 'Asia/Baghdad';
 
-  const zkPull = await zktecoSocket.fetchAttendanceLogs({
-    ip                : host,
-    port              : port != null && Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
-    socket_timeout_ms,
-  });
+  let zkPull;
+  if (bridge) {
+    const payload = await dtrZkBridge.fetchBioSyncPayload(bridge);
+    if (!payload) {
+      throw Object.assign(
+        new Error('DTR bridge has no attendance snapshot yet. Ensure dtr.zkteco.api is running on the LAN and the device is connected.'),
+        { statusCode: 502, code: 'ZK_BRIDGE_EMPTY' },
+      );
+    }
+    const records = dtrZkBridge.dtrLogsToZkAttendanceRecords(payload.logs || []);
+    const device_users = dtrZkBridge.dtrUsersToZkUserSample(payload.users || []);
+    zkPull = {
+      ok: true,
+      connection_type: 'dtr_bridge',
+      attendance_size: payload.device_details?.attendanceSize ?? null,
+      records,
+      device_users,
+      errors: [],
+      attendance_retry_without_disable: false,
+    };
+  } else {
+    zkPull = await zktecoSocket.fetchAttendanceLogs({
+      ip                : host,
+      port              : port != null && Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+      socket_timeout_ms,
+    });
+  }
 
   const zkNameByPin = buildZkPinToDisplayName(zkPull.device_users || []);
 
@@ -1163,7 +1225,7 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
 
   const rawBody = {
     _meta: {
-      source   : 'zk_attendance_pull',
+      source   : bridge ? 'dtr_zkteco_bridge' : 'zk_attendance_pull',
       device_id: dev.id,
       at       : new Date().toISOString(),
       zk       : {
@@ -1174,6 +1236,7 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
         device_users    : (zkPull.device_users || []).length,
         errors          : zkPull.errors,
         pull_diagnostics,
+        dtr_bridge_url  : bridge || undefined,
       },
     },
   };
