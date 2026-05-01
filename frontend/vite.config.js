@@ -12,7 +12,6 @@ function resolveReactPkg(name) {
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    // Monorepo/workspace safety: force a single React instance.
     dedupe: ['react', 'react-dom'],
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -25,7 +24,8 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    host: '0.0.0.0',   // Expose on all network interfaces for remote access
+    host: '0.0.0.0',
+    hmr: { port: 3000, clientPort: 3000 },
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
