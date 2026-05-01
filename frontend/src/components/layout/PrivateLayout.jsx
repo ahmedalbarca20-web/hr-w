@@ -63,9 +63,15 @@ function PrivateLayoutInner({ children }) {
     return () => sw.removeEventListener('message', onSwMessage);
   }, [navigate]);
 
-  const titleKey = Object.entries(PAGE_TITLES).findLast(
-    ([path]) => location.pathname === path || location.pathname.startsWith(path + '/')
-  )?.[1] || 'app_name';
+  let titleKey = 'app_name';
+  const titleEntries = Object.entries(PAGE_TITLES);
+  for (let i = titleEntries.length - 1; i >= 0; i -= 1) {
+    const [path] = titleEntries[i];
+    if (location.pathname === path || location.pathname.startsWith(`${path}/`)) {
+      titleKey = titleEntries[i][1];
+      break;
+    }
+  }
 
   // On desktop the sidebar is always visible → push content by 260px.
   // On mobile the sidebar is an overlay → no push.
