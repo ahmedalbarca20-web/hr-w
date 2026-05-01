@@ -17,6 +17,7 @@ const cookieParser = require('cookie-parser');
 const rateLimit    = require('express-rate-limit');
 
 const router                         = require('./routes/index');
+const { flexibleDevicePushBody }     = require('./middleware/devicePushBody.middleware');
 const { sendError, ERROR_CODES }     = require('./utils/response');
 
 const app = express();
@@ -88,13 +89,21 @@ app.use(cors({
   origin          : corsOriginDelegate,
   credentials     : true, // httpOnly cookie exchange — requires explicit Allow-Origin
   methods         : ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders    : ['Content-Type', 'Authorization'],
+  allowedHeaders    : ['Content-Type', 'Authorization', 'X-Device-Serial', 'X-Device-Key'],
   optionsSuccessStatus: 204,
 }));
 
 // ── Request parsing ─────────────────────────────────────────────────────────
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true }));
+// ZKTeco ADMS / iClock: text/plain ATTLOG must be parsed here (before json consumes the stream).
+app.use(flexibleDevicePushBody);
+app.use((req, res, next) => {
+  if (req._devicePushBodyParsed) return next();
+  express.json({ limit: '1mb' })(req, res, next);
+});
+app.use((req, res, next) => {
+  if (req._devicePushBodyParsed) return next();
+  express.urlencoded({ extended: true })(req, res, next);
+});
 app.use(cookieParser());
 
 // ── HTTP logging (skip in test to keep test output clean) ───────────────

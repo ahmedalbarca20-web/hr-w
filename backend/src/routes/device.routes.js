@@ -6,6 +6,7 @@
  *
  * ── Device-to-server (hardware device auth — X-Device-Serial + X-Device-Key) ──
  *   POST   /push                   Push a batch of raw logs from the device
+ *   (Also: POST /api/iclock/cdata — ZKTeco ADMS default URL, same auth + ATTLOG text/plain)
  *   POST   /heartbeat              Device heartbeat / status update
  *
  * ── HR/Admin user routes (JWT auth) ─────────────────────────────────────────

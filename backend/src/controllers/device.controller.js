@@ -317,12 +317,18 @@ const push = asyncHandler(async (req, res) => {
     received_at : new Date().toISOString(),
     remote_ip   : req.ip,
     device_serial: req.device.serial_number,
-    push_shape  : Array.isArray(req.body?.logs)
-      ? 'logs[]'
-      : (Array.isArray(req.body?.AttLog) || Array.isArray(req.body?.attlog) ? 'attlog[]' : 'single-or-unknown'),
+    push_shape  : req.body?._push_format
+      ? String(req.body._push_format)
+      : (Array.isArray(req.body?.logs)
+        ? 'logs[]'
+        : (Array.isArray(req.body?.AttLog) || Array.isArray(req.body?.attlog) ? 'attlog[]' : 'single-or-unknown')),
   };
 
   const result = await svc.pushLogs(req.device, parsed.data.logs, req.body);
+  const basePath = String(req.originalUrl || '').split('?')[0];
+  if (basePath.endsWith('/iclock/cdata')) {
+    return res.status(200).type('text/plain').send('OK');
+  }
   sendSuccess(res, result, 'Logs received');
 });
 

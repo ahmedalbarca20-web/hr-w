@@ -16,6 +16,8 @@ const reportRoutes        = require('./report.routes');
 const notificationRoutes  = require('./notification.routes');
 
 const { authenticate }  = require('../middleware/auth.middleware');
+const { authenticateDevice } = require('../middleware/device.middleware');
+const deviceController  = require('../controllers/device.controller');
 const { sendSuccess }   = require('../utils/response');
 const { QueryTypes }    = require('sequelize');
 const { sequelize }     = require('../config/db');
@@ -27,6 +29,9 @@ const router = Router();
 
 // Health check (no auth required)
 router.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
+
+/** ZKTeco iClock / ADMS default path — same handler as POST /devices/push (SN + key in query or body). */
+router.post('/iclock/cdata', authenticateDevice, deviceController.push);
 
 // Dashboard summary
 router.get('/dashboard/summary', authenticate, async (req, res) => {
