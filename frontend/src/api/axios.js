@@ -15,11 +15,21 @@ const shouldForceSameOriginApi = () => {
   return isPreviewHost;
 };
 
-const apiBase = shouldForceSameOriginApi() ? `${currentOrigin}/api` : (rawApiBase || '/api');
+/** Dev: opened as http://192.168.x.x:3000 but .env points API to localhost — browser would hit wrong machine. */
+const devLanShouldUseProxy = () => {
+  if (!import.meta.env.DEV || !isBrowser || !rawApiBase || !isAbsoluteHttpUrl(rawApiBase)) return false;
+  if (!currentHost || /^(localhost|127\.0\.0\.1)(:|$)/i.test(currentHost)) return false;
+  return /^(https?:\/\/)(localhost|127\.0\.0\.1)(:|\/|$)/i.test(rawApiBase);
+};
+
+const apiBase = devLanShouldUseProxy()
+  ? `${currentOrigin}/api`
+  : (shouldForceSameOriginApi() ? `${currentOrigin}/api` : (rawApiBase || '/api'));
 
 /** Resolved API base for authenticated `fetch` (same rules as axios `baseURL`). */
 export function getResolvedApiBaseUrl() {
   if (!isBrowser) return rawApiBase || '/api';
+  if (devLanShouldUseProxy()) return `${currentOrigin}/api`;
   if (shouldForceSameOriginApi()) return `${currentOrigin}/api`;
   return rawApiBase || '/api';
 }
