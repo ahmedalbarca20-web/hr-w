@@ -10,7 +10,7 @@ import {
   getDevicePushConfig,
 } from '../../api/device.api';
 import { listDepartments } from '../../api/department.api';
-import { applyZkSnapshotToForm, unwrapZkPayload, zkFailureMessage } from '../../lib/deviceZk';
+import { applyZkSnapshotToForm, extractZkSerialFromSnapshot, unwrapZkPayload, zkFailureMessage } from '../../lib/deviceZk';
 import { toErrorString } from '../../utils/helpers';
 
 function Field({ label, children, error }) {
@@ -184,21 +184,11 @@ export default function DeviceForm() {
     const zkPort = Number.isFinite(Number(portRaw)) && Number(portRaw) > 0 ? Number(portRaw) : 4370;
 
     try {
-      const zkRes = await probeZkSocket({
-        ip_address: form.ip_address.trim(),
-        port: zkPort,
-        /** أسرع: جلب الرقم التسلسلي/الإصدار فقط — getUsers() على أجهزة كبيرة قد يستغرق 15–30 ثانية */
-        include_users: false,
-        include_attendance_size: false,
-        socket_timeout_ms: 7000,
-      });
-      let z = unwrapZkPayload(zkRes);
-
-      if (!z?.ok && form.type === 'HYBRID') {
+      const tryHttpSerial = async (vendor) => {
         const httpRes = await probeDeviceConnection({
-          ip_address: form.ip_address,
+          ip_address: form.ip_address.trim(),
           port: Number.isFinite(Number(portRaw)) && Number(portRaw) > 0 ? Number(portRaw) : undefined,
-          vendor: 'FINGERTIC',
+          vendor,
         });
         const httpPayload = unwrapZkPayload(httpRes);
         if (httpPayload?.ok && httpPayload.serial_number) {
@@ -208,10 +198,25 @@ export default function DeviceForm() {
             firmware_version: httpPayload.firmware_version || p.firmware_version,
           }));
           setTestResult('success');
-          setTestMessage('تم الاتصال عبر واجهة الويب (Fingertic) بعد فشل بروتوكول ZK.');
-          return;
+          setTestMessage(
+            vendor === 'FINGERTIC'
+              ? 'تم الاتصال عبر واجهة الويب (Fingertic) بعد فشل أو نقص بيانات بروتوكول ZK.'
+              : 'تمت قراءة الرقم التسلسلي من واجهة الويب للجهاز (HTTP) بعد بروتوكول ZK.',
+          );
+          return true;
         }
-      }
+        return false;
+      };
+
+      const zkRes = await probeZkSocket({
+        ip_address: form.ip_address.trim(),
+        port: zkPort,
+        /** أسرع: بدون getUsers() — لكن نترك مهلة كافية لـ TCP/UDP + أوامر getSerialNumber/getInfo على شبكات بطيئة */
+        include_users: false,
+        include_attendance_size: false,
+        socket_timeout_ms: 14000,
+      });
+      let z = unwrapZkPayload(zkRes);
 
       if (z?.ok) {
         if (applyZkSnapshotToForm(setForm, z)) {
@@ -219,18 +224,28 @@ export default function DeviceForm() {
           setTestMessage('');
           return;
         }
+        if (await tryHttpSerial('AUTO')) return;
         setTestResult('error');
-        setTestMessage('اتصل بالجهاز لكن لم يُرجع رقمًا تسلسليًا صالحًا في الحقل.');
+        const hintSn = extractZkSerialFromSnapshot(z);
+        setTestMessage(
+          hintSn
+            ? 'تعذّر تعبئة الرقم التسلسلي تلقائياً رغم وصول بيانات من الجهاز. انسخ الرقم يدوياً إلى الحقل.'
+            : 'اتصل بالجهاز (ZK) لكن لم يُرجع رقمًا تسلسليًا معروفًا. جرّب واجهة الويب (تم تجربة HTTP تلقائياً) أو أدخل الرقم من ملصق الجهاز.',
+        );
         setZkDebug(z);
         return;
       }
+
+      if (await tryHttpSerial('AUTO')) return;
+      if (form.type === 'HYBRID' && (await tryHttpSerial('FINGERTIC'))) return;
 
       setTestResult('error');
       setTestMessage(zkFailureMessage(z));
       setZkDebug(z || { ok: false });
     } catch (err) {
       setTestResult('error');
-      setTestMessage(err.response?.data?.error || err.message || 'فشل اختبار الاتصال');
+      const apiErr = err.response?.data?.error || err.response?.data?.message;
+      setTestMessage(apiErr || err.message || 'فشل اختبار الاتصال');
     } finally {
       setTesting(false);
     }

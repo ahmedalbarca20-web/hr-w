@@ -7,14 +7,27 @@ export function unwrapZkPayload(res) {
   return body?.data ?? body;
 }
 
+/** Best-effort serial from ZK probe (بعض الأجهزة تضع الرقم داخل `info` فقط). */
+export function extractZkSerialFromSnapshot(z) {
+  if (!z || typeof z !== 'object') return '';
+  const top = z.serial_number;
+  if (top != null && String(top).trim() !== '') return String(top).trim();
+  const info = z.info;
+  if (info && typeof info === 'object') {
+    const cand = info.serialNumber ?? info.SerialNumber ?? info.serial_number ?? info.sn ?? info.deviceSerial;
+    if (cand != null && String(cand).trim() !== '') return String(cand).trim();
+  }
+  return '';
+}
+
 /** Fills serial + firmware from a successful ZK snapshot. */
 export function applyZkSnapshotToForm(setForm, z) {
   if (!z?.ok) return false;
-  const sn = z.serial_number;
-  if (sn == null || String(sn).trim() === '') return false;
+  const sn = extractZkSerialFromSnapshot(z);
+  if (!sn) return false;
   setForm((p) => ({
     ...p,
-    serial_number: String(sn).trim(),
+    serial_number: sn,
     firmware_version:
       z.firmware_version != null && String(z.firmware_version).trim() !== ''
         ? String(z.firmware_version)
