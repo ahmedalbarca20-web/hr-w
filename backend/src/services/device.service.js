@@ -921,11 +921,17 @@ async function listZkUsersOnDevice(device_id, company_id, query = {}) {
   const port = query.port != null && Number.isFinite(Number(query.port)) && Number(query.port) > 0
     ? Number(query.port)
     : 4370;
+  const envUdp = Number.parseInt(String(process.env.ZK_UDP_LOCAL_PORT || '').trim(), 10);
+  const udp_local_port = Number.isFinite(Number(query.udp_local_port))
+    ? Math.min(65535, Math.max(1024, Number(query.udp_local_port)))
+    : (Number.isFinite(envUdp) && envUdp >= 1024 && envUdp <= 65535
+      ? envUdp
+      : 40000 + Math.floor(Math.random() * 20000));
   const snap = await zktecoSocket.probeSnapshot({
     ip                      : host,
     port,
     socket_timeout_ms       : 15000,
-    udp_local_port          : 5000,
+    udp_local_port,
     include_users           : true,
     max_users               : 500,
     include_attendance_size : false,

@@ -244,7 +244,20 @@ export default function DeviceForm() {
       setZkDebug(z || { ok: false });
     } catch (err) {
       setTestResult('error');
-      const apiErr = err.response?.data?.error || err.response?.data?.message;
+      let apiErr = err.response?.data?.error || err.response?.data?.message;
+      const msg = String(err.message || '');
+      const noResponse = err.response == null;
+      if (
+        !apiErr
+        && noResponse
+        && (err.code === 'ERR_NETWORK'
+          || err.code === 'ECONNREFUSED'
+          || msg === 'Network Error'
+          || /ECONNREFUSED|Network Error/i.test(msg))
+      ) {
+        apiErr =
+          'تعذّر الاتصال بخادم الـ API (غالباً المنفذ 5000). شغّل من جذر المشروع: npm run dev:all — أو تأكد أن الواجهة والـ API على نفس الجهاز إذا فتحت الرابط من شبكة محلية.';
+      }
       setTestMessage(apiErr || err.message || 'فشل اختبار الاتصال');
     } finally {
       setTesting(false);
