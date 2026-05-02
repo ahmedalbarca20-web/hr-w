@@ -12,7 +12,8 @@
     "seed:super-admin-reset": "node database/reset-super-admin-password.js",
     "seed:demo": "node database/seed.demo-employees.js",
     "init:sqlite": "node database/init-sqlite.js",
-    "bridge:zk-lan": "node zk-lan-bridge/server.js"
+    "bridge:zk-lan": "node zk-lan-bridge/server.js",
+    "device:set-ip": "node scripts/set-device-lan-ip.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
