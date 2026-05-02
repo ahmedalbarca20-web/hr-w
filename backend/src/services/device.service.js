@@ -2,7 +2,7 @@
 
 const http          = require('http');
 const https         = require('https');
-const net           = require('net');
+const net           = require('node:net');
 const { URL }       = require('url');
 const crypto        = require('crypto');
 const { Op }        = require('sequelize');

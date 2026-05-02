@@ -1,5 +1,7 @@
 'use strict';
 
+const iconv = require('iconv-lite');
+
 /**
  * zkteco-js decodes ZK user names with `.toString('ascii')`, which corrupts Arabic
  * and other UTF-8 names stored on the device. Patch the shared helper **before**
@@ -26,6 +28,11 @@ function decodeNameField(buf, start, maxLen) {
     } catch (_) { /* ignore */ }
     if (/[^\x00-\x7F]/.test(latin)) return latin;
   }
+
+  try {
+    const cp1256 = iconv.decode(raw, 'windows-1256').replace(/\0/g, '').replace(/\uFFFD/g, '').trim();
+    if (cp1256 && /[\u0600-\u06FF]/.test(cp1256)) return cp1256;
+  } catch (_) { /* ignore */ }
 
   return raw.toString('ascii').replace(/\0/g, '').trim();
 }

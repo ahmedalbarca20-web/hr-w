@@ -3,6 +3,7 @@
 const util = require('util');
 require('../utils/zkUserDecodePatch').applyPatch();
 const ZktecoJs = require('zkteco-js');
+require('../utils/zktecoJsUdpFallbackPatch').applyPatch();
 const { COMMANDS: ZK_COMMANDS } = require('zkteco-js/src/helper/command');
 
 /**
@@ -16,6 +17,12 @@ const { COMMANDS: ZK_COMMANDS } = require('zkteco-js/src/helper/command');
  */
 function digNodeSystemError(obj, depth = 0) {
   if (!obj || typeof obj !== 'object' || depth > 8) return null;
+  if (obj.name === 'AggregateError' && Array.isArray(obj.errors)) {
+    for (const sub of obj.errors) {
+      const inner = digNodeSystemError(sub, depth + 1);
+      if (inner) return inner;
+    }
+  }
   if (obj.code && (obj.syscall || obj.address != null || obj.port != null)) return obj;
   if (obj.err) return digNodeSystemError(obj.err, depth + 1);
   return null;
@@ -56,6 +63,12 @@ function formatProbeError(e) {
 function errorCodeFromException(e) {
   const sys = digNodeSystemError(e);
   if (sys && sys.code) return sys.code;
+  if (e && typeof e === 'object' && e.name === 'AggregateError' && Array.isArray(e.errors)) {
+    for (const sub of e.errors) {
+      const c = errorCodeFromException(sub);
+      if (c) return c;
+    }
+  }
   if (e && e.err && e.err.code && typeof e.err.code === 'string') return e.err.code;
   if (e && e.code) return e.code;
   return null;
@@ -156,9 +169,12 @@ async function probeSnapshot(opts) {
   const socket_timeout_ms = Number.isFinite(Number(opts.socket_timeout_ms))
     ? Math.min(60000, Math.max(2000, Number(opts.socket_timeout_ms)))
     : 8000;
+  const envUdp = Number.parseInt(String(process.env.ZK_UDP_LOCAL_PORT || '').trim(), 10);
   const udp_local_port = Number.isFinite(Number(opts.udp_local_port))
     ? Math.min(65535, Math.max(1024, Number(opts.udp_local_port)))
-    : 5000;
+    : (Number.isFinite(envUdp) && envUdp >= 1024 && envUdp <= 65535
+      ? envUdp
+      : 40000 + Math.floor(Math.random() * 20000));
   const include_users = opts.include_users !== false;
   const max_users = Math.min(500, Math.max(1, Number(opts.max_users) || 80));
   const include_attendance_size = opts.include_attendance_size !== false;
@@ -233,8 +249,10 @@ async function probeSnapshot(opts) {
       ...(code ? { code } : {}),
     });
     if (code === 'ECONNREFUSED' || /ECONNREFUSED|refused/i.test(message)) {
-      result.hint_ar =
-        'رفض الاتصال على منفذ ZK (غالباً 4370): تأكد أن الجهاز على الشبكة، والمنفذ مفتوح، وأن الخادم يشغّل الـ API على نفس LAN.';
+      const vercel = String(process.env.VERCEL || '').trim() === '1';
+      result.hint_ar = vercel
+        ? 'رفض الاتصال: خادم Vercel لا يصل لعناوين الشبكة الداخلية (192.168.x). شغّل الـ API على جهاز بنفس LAN الجهاز أو استخدم جسر DTR_ZKTECO_API_URL.'
+        : 'رفض الاتصال على منفذ ZK (غالباً 4370): تأكد أن الجهاز على الشبكة، والمنفذ مفتوح، وأن عملية Node التي تشغّل الـ API على نفس LAN (جرّب من جهازك: npm run dev:all من مجلد المشروع).';
     } else if (code === 'ETIMEDOUT' || /time.?out/i.test(message)) {
       result.hint_ar = 'انتهت مهلة الاتصال: جرّب زيادة socket_timeout_ms أو تحقق من جدار الحماية.';
     } else if (code === 'EHOSTUNREACH' || /host.*unreach/i.test(message)) {
