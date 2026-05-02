@@ -36,9 +36,11 @@
 
 ## 6) Git
 
-- لالتقط نقطة رسمية على Git بعد استقرار الكود:  
-  `git tag -a checkpoint-zk-2026-05-02 -m "ZK probe notes + bridge"`  
-  ثم `git push origin checkpoint-zk-2026-05-02` إن رغبت بالمشاركة.
+- وسم موجود محلياً: **`checkpoint-zk-dev-2026-05-02`** (على commit الوثائق).
+- التزامات محلية إضافية **بدون push** (للرجوع بـ `git log` / `git reset`):
+  - `a93538c` — وثيقة هذا الملف
+  - `d2ecdc3` — جسر `zk-lan-bridge`، تحسين رسالة اختبار الجهاز، منفذ UDP في `listZkUsersOnDevice`
+- لرفع لاحقاً: `git push origin main` و`git push origin checkpoint-zk-dev-2026-05-02`
 
 ---
 
