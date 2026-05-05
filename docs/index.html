@@ -1,83 +1,138 @@
 <!doctype html>
-<html lang="en" dir="ltr">
+<html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>hr-w | HR System</title>
-    <meta
-      name="description"
-      content="HR System - نظام الموارد البشرية المبسط. Bilingual HR app built with Node.js, Express, React, and Sequelize."
-    />
-    <link rel="stylesheet" href="./style.css" />
+    <title>hr-w | Project Navigator</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --card: #141b34;
+        --text: #e7ecff;
+        --muted: #9fb0e3;
+        --accent: #7aa2ff;
+        --border: #27335f;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+        background: radial-gradient(circle at top, #1a2550 0%, var(--bg) 45%);
+        color: var(--text);
+        line-height: 1.7;
+      }
+      .wrap {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 28px 16px 56px;
+      }
+      .hero {
+        background: linear-gradient(135deg, #1c2b62 0%, #101832 100%);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 18px;
+      }
+      h1, h2 { margin: 0 0 10px; }
+      h1 { font-size: 28px; }
+      h2 { font-size: 20px; margin-top: 18px; }
+      p { margin: 8px 0; color: var(--muted); }
+      .grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 14px;
+      }
+      .card h3 {
+        margin: 0 0 10px;
+        font-size: 16px;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover { text-decoration: underline; }
+      ul {
+        margin: 0;
+        padding-right: 18px;
+      }
+      code {
+        background: #0d1330;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 2px 7px;
+        font-size: 12px;
+      }
+      .tip {
+        margin-top: 16px;
+        padding: 12px;
+        border: 1px dashed #3f518f;
+        border-radius: 12px;
+        color: #c8d4ff;
+        background: #121a38;
+      }
+    </style>
   </head>
   <body>
-    <main class="container">
-      <header class="hero">
-        <p class="badge">hr-w</p>
-        <h1>HR System - نظام الموارد البشرية المبسط</h1>
-        <p class="subtitle">
-          Bilingual (Arabic / English) HR system built with Node.js + Express + React + Sequelize + JWT.
+    <div class="wrap">
+      <section class="hero">
+        <h1>hr-w</h1>
+        <p>صفحة تنقل سريعة لعرض كل ملفات ومجلدات المشروع على GitHub.</p>
+        <p>
+          إذا تريد تشوف "كلشي"، استخدم روابط <strong>Code</strong> أدناه (مو README فقط).
         </p>
-      </header>
-
-      <section class="card">
-        <h2>Stack</h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Layer</th>
-                <th>Technology</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td>Backend</td><td>Node.js 20, Express 5, Sequelize</td></tr>
-              <tr><td>Database</td><td>SQLite / MySQL / MariaDB / Postgres (via .env)</td></tr>
-              <tr><td>Auth</td><td>JWT (Access + Refresh tokens)</td></tr>
-              <tr><td>Frontend</td><td>React 18, Vite, React Router v6</td></tr>
-              <tr><td>i18n</td><td>i18next (AR &lt;-&gt; EN, RTL support)</td></tr>
-              <tr><td>State</td><td>Redux Toolkit</td></tr>
-              <tr><td>Container</td><td>Docker + Docker Compose</td></tr>
-              <tr><td>Proxy</td><td>Nginx (production)</td></tr>
-            </tbody>
-          </table>
-        </div>
       </section>
 
-      <section class="card">
-        <h2>Quick Start (Development)</h2>
-        <pre><code># 1. Copy env files
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
+      <section class="grid">
+        <article class="card">
+          <h3>روابط أساسية</h3>
+          <ul>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w" target="_blank" rel="noreferrer">المستودع الرئيسي (Code)</a></li>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/tree/main" target="_blank" rel="noreferrer">الفرع main</a></li>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/blob/main/README.md" target="_blank" rel="noreferrer">README.md</a></li>
+          </ul>
+        </article>
 
-# 2. Start all services
-docker compose up --build
+        <article class="card">
+          <h3>الواجهة Frontend</h3>
+          <ul>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/tree/main/frontend" target="_blank" rel="noreferrer">frontend/</a></li>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/tree/main/frontend/src" target="_blank" rel="noreferrer">frontend/src/</a></li>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/blob/main/frontend/package.json" target="_blank" rel="noreferrer">frontend/package.json</a></li>
+          </ul>
+        </article>
 
-# Backend  -> http://localhost:5000
-# Frontend -> http://localhost:3000</code></pre>
+        <article class="card">
+          <h3>الخلفية Backend</h3>
+          <ul>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/tree/main/backend" target="_blank" rel="noreferrer">backend/</a></li>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/tree/main/backend/src" target="_blank" rel="noreferrer">backend/src/</a></li>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/tree/main/backend/database" target="_blank" rel="noreferrer">backend/database/</a></li>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/blob/main/backend/server.js" target="_blank" rel="noreferrer">backend/server.js</a></li>
+          </ul>
+        </article>
+
+        <article class="card">
+          <h3>التهيئة والتشغيل</h3>
+          <ul>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/blob/main/package.json" target="_blank" rel="noreferrer">package.json (root)</a></li>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/blob/main/vite.config.mjs" target="_blank" rel="noreferrer">vite.config.mjs</a></li>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/tree/main/.github/workflows" target="_blank" rel="noreferrer">.github/workflows/</a></li>
+            <li><a href="https://github.com/ahmedalbarca20-web/hr-w/tree/main/docs" target="_blank" rel="noreferrer">docs/</a></li>
+          </ul>
+        </article>
       </section>
 
-      <section class="card">
-        <h2>Production Build</h2>
-        <pre><code>docker compose -f docker-compose.prod.yml up --build -d
-# Nginx serves SPA on :80 and proxies /api -> backend:5000</code></pre>
-      </section>
-
-      <section class="card">
-        <h2>Database Seeding (Optional)</h2>
-        <pre><code>cd backend
-npm run seed
-node database/seed.super-admin.js</code></pre>
-      </section>
-
-      <section class="card">
-        <h2>Login</h2>
-        <p><code>POST /api/auth/login</code> with <code>{ email, password }</code> and optional <code>company_code</code>.</p>
-      </section>
-
-      <footer class="footer">
-        <p>GitHub Pages hosts this static landing page only. Backend API must run on a server/VPS.</p>
-      </footer>
-    </main>
+      <div class="tip">
+        <strong>إعداد GitHub Pages:</strong><br />
+        GitHub → Settings → Pages → Source: <code>Deploy from a branch</code> →
+        Branch: <code>main</code> + Folder: <code>/docs</code>
+      </div>
+    </div>
   </body>
 </html>
