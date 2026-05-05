@@ -1,4 +1,5 @@
-# HR System – نظام الموارد البشرية المبسط
+# hr-w
+## HR System – نظام الموارد البشرية المبسط
 
 Bilingual (Arabic / English) HR system built with **Node.js + Express + React + MariaDB + JWT**.
 
@@ -24,7 +25,7 @@ cp frontend/.env.example frontend/.env
 docker compose up --build
 
 # Backend  → http://localhost:5000
-# Frontend → http://localhost:5173
+# Frontend → http://localhost:3000
 ```
 
 ## Production Build
@@ -42,5 +43,3 @@ node database/seed.super-admin.js # platform super-admin (see script header for 
 ```
 
 > **Login:** `POST /api/auth/login` with `{ email, password }` and optional `company_code` (matches company `tax_id`).
-
-# hr-w
