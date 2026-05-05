@@ -189,6 +189,7 @@ export default function DeviceForm() {
           ip_address: form.ip_address.trim(),
           port: Number.isFinite(Number(portRaw)) && Number(portRaw) > 0 ? Number(portRaw) : undefined,
           vendor,
+          quick: true,
         });
         const httpPayload = unwrapZkPayload(httpRes);
         if (httpPayload?.ok && httpPayload.serial_number) {
@@ -211,10 +212,11 @@ export default function DeviceForm() {
       const zkRes = await probeZkSocket({
         ip_address: form.ip_address.trim(),
         port: zkPort,
-        /** أسرع: بدون getUsers() — لكن نترك مهلة كافية لـ TCP/UDP + أوامر getSerialNumber/getInfo على شبكات بطيئة */
+        /** فحص سريع: تسلسل فقط (+ getInfo إن لزم) — مهلة أقصر؛ التفاصيل الكاملة من «مركز المزامنة». */
+        minimal_probe: true,
         include_users: false,
         include_attendance_size: false,
-        socket_timeout_ms: 14000,
+        socket_timeout_ms: 4000,
       });
       let z = unwrapZkPayload(zkRes);
 

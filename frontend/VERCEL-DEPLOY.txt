@@ -3,7 +3,7 @@
 ═══════════════════════════════════════════════════════════════════
 
 الـ API (Express) لا يعمل على Vercel كخادم دائم بنفس الطريقة؛ انشره على
-Railway / Render / VPS / Supabase Edge غير مناسب لـ Express كامل.
+Railway / Render / VPS أو أي VPS يشغّل Node طوال الوقت.
 هذا الملف يخص الواجهة فقط — عنوان الـ API يبقى متغير بيئة.
 
 ───────────────────────────────────────────────────────────────────
@@ -21,17 +21,17 @@ Railway / Render / VPS / Supabase Edge غير مناسب لـ Express كامل.
         │  طلبات login وغيرها (HTTPS) ← axios
         ▼
   ┌─────────────┐     ملف .env على نفس السيرفر:
-  │   Backend   │     DATABASE_URL ← من Supabase (اتصال Postgres)
+  │   Backend   │     قاعدة البيانات (MySQL / Postgres / … حسب backend/.env)
   │  (Express)  │     CLIENT_URL   ← رابط Vercel (CORS)
   └──────┬──────┘
         │  Sequelize / SQL
         ▼
   ┌─────────────┐
-  │  Supabase   │     قاعدة البيانات فقط (ما فيه واجهة HR جاهزة هناك)
-  │  Postgres   │
+  │  قاعدة      │     مستضافة أو محلية — الواجهة HR من الـ API وليس من قاعدة البيانات مباشرة
+  │  البيانات   │
   └─────────────┘
 
-  • Supabase ما يعرف رابط Vercel ولا يربطه تلقائياً — أنت تربط:
+  • مزوّد الاستضافة لا يربط Vercel تلقائياً — أنت تربط:
       الواجهة → بـ Vercel + VITE_API_BASE_URL
       الـ API → بسيرفر + DATABASE_URL + CLIENT_URL
   • بدون Backend منشور على الإنترنت: الواجهة على Vercel ما تقدر تسجل دخول.

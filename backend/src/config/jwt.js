@@ -17,7 +17,6 @@ const isProd = process.env.NODE_ENV === 'production';
 const buildProdFallbackSecret = (name) => {
   const seedParts = [
     process.env.DATABASE_URL,
-    process.env.SUPABASE_DB_URL,
     process.env.VERCEL_PROJECT_PRODUCTION_URL,
     process.env.VERCEL_URL,
     process.env.VERCEL_GIT_COMMIT_SHA,

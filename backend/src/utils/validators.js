@@ -370,8 +370,11 @@ const deviceZkSocketProbeSchema = z.object({
   ip_address: deviceProbeNetworkHost,
   port: z.coerce.number().int().min(1).max(65535).optional().default(4370),
   /** Default lowered: zkteco-js may try TCP+UDP; unreachable hosts felt ~2× this before failing. */
-  socket_timeout_ms: z.coerce.number().int().min(2000).max(60000).optional().default(6500),
-  udp_local_port: z.coerce.number().int().min(1024).max(65535).optional().default(5000),
+  socket_timeout_ms: z.coerce.number().int().min(2000).max(60000).optional().default(4000),
+  /** Omit to let the server pick a high random UDP port (avoids EADDRINUSE with fixed 5000). */
+  udp_local_port: z.coerce.number().int().min(1024).max(65535).optional(),
+  /** Only serial (+ optional getInfo if serial empty) — faster for «اختبار الاتصال» in the form. */
+  minimal_probe: z.boolean().optional().default(false),
   include_users: z.boolean().optional().default(true),
   max_users: z.coerce.number().int().min(1).max(500).optional().default(80),
   /** Default false: many ZK firmwares break zkteco-js getAttendanceSize (buffer shorter than offset 40). */
@@ -402,6 +405,8 @@ const deviceProbeSchema = z.object({
     .optional()
     .transform((v) => (v === '' || v === null || v === undefined ? undefined : v)),
   vendor: z.enum(['ZKTECO', 'FINGERTIC', 'AUTO']).optional().default('AUTO'),
+  /** فحص HTTP سريع (عدد قليل من الروابط + مهلة قصيرة) — افتراضي true لتفادي انتظار دقائق */
+  quick: z.boolean().optional().default(true),
 });
 
 /**

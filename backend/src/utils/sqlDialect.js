@@ -5,7 +5,7 @@
  * Usage: const { concat, sumIf, yearOf, daysAgo } = require('./sqlDialect');
  */
 
-const databaseUrl = String(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || '').trim();
+const databaseUrl = String(process.env.DATABASE_URL || '').trim();
 const envDialect = String(process.env.DB_DIALECT || '').trim().toLowerCase();
 const inferredDialect = /^postgres(ql)?:\/\//i.test(databaseUrl)
   ? 'postgres'

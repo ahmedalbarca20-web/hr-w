@@ -153,7 +153,7 @@ const probeZkSocket = asyncHandler(async (req, res) => {
   const data = await svc.probeZkSocket(parsed.data);
   const msg = data.ok
     ? 'تمت قراءة الجهاز عبر zkteco-js (بروتوكول ZK).'
-    : 'تعذّر الاتصال ببروتوكول الجهاز — راجع errors في الاستجابة.';
+    : (data.hint_ar || 'تعذّر الاتصال ببروتوكول الجهاز — راجع errors في الاستجابة.');
   sendSuccess(res, data, msg);
 });
 
@@ -172,7 +172,7 @@ const readZkFromDevice = asyncHandler(async (req, res) => {
   const data = await svc.readZkFromRegisteredDevice(id, resolveCompanyId(req), parsed.data);
   const msg = data.ok
     ? 'تمت القراءة من الجهاز المسجّل عبر zkteco-js.'
-    : 'تعذّر الاتصال — راجع errors في الاستجابة.';
+    : (data.hint_ar || 'تعذّر الاتصال — راجع errors في الاستجابة.');
   sendSuccess(res, data, msg);
 });
 

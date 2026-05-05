@@ -1,27 +1,24 @@
 ═══════════════════════════════════════════════════════════════════
-  HR — رفع قاعدة البيانات على Supabase + تشغيل الـ backend
+  HR — PostgreSQL (استضافة أو محلي) + تشغيل الـ backend
 ═══════════════════════════════════════════════════════════════════
 
-(1) في Supabase: Project → SQL Editor → New query
+(1) في عميل SQL أو لوحة الاستضافة:
     • افتح الملف:  backend/database/schema.postgresql.sql
-    • انسخ المحتوى كاملاً والصقه في المحرّر ثم Run.
+    • انسخ المحتوى كاملاً ونفّذه.
     • تحذير: السكربت يحذف الجداول الموجودة بنفس الأسماء ثم يعيد إنشاءها.
 
-(2) في Supabase: Project Settings → Database
-    • انسخ "Connection string" بنمط URI (Session mode أو Transaction حسب تفضيلك).
-    • كلمة مرور قاعدة البيانات = Database password التي ضبطتها عند إنشاء المشروع.
+(2) انسخ Connection string (URI) من مزوّد Postgres أو ابنِ رابطاً محلياً.
 
 (3) على جهازك (مجلد backend):
     npm install
 
 (4) أنشئ ملف .env:
-    • انسخ:  database/supabase.env.example  →  backend/.env
+    • انسخ:  database/postgresql.env.example  →  backend/.env
     • عدّل DATABASE_URL والقيم الأمنية (JWT_*).
 
 (5) سوبر أدمن المنصّة (مرة واحدة بعد SQL):
     في backend/.env عيّن SUPER_ADMIN_EMAIL و SUPER_ADMIN_PASSWORD ثم من مجلد backend:
       node database/seed.super-admin.js
-    (الافتراضي في السكربت للبريد: ahmedalbarca20@gmail.com — كلمة السر من .env فقط.)
 
 (6) شغّل الخادم:
     npm run start
@@ -32,7 +29,7 @@
 
 ملاحظات
 ────────
-• الـ backend يقرأ DB_DIALECT=postgres و DATABASE_URL تلقائياً مع SSL مناسب لـ Supabase.
+• الـ backend يقرأ DB_DIALECT=postgres و DATABASE_URL مع SSL حسب DB_SSL.
 • لتعطيل SSL محلياً: DB_SSL=false
 • لا تشغّل sequelize.sync({ force: true }) على الإنتاج — الجداول تُنشأ من ملف SQL.
 

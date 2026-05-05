@@ -14,11 +14,16 @@
     "dev": "vite dev --config vite.config.mjs --host 0.0.0.0",
     "dev:api": "npm run dev -w hr-backend",
     "dev:all": "concurrently -n api,web -c magenta,cyan \"npm run dev -w hr-backend\" \"npm run dev\"",
+    "seed:super-admin": "npm run seed:super-admin -w hr-backend",
+    "seed:super-admin-reset": "npm run seed:super-admin-reset -w hr-backend",
     "security:audit": "npm audit --workspaces --omit=dev --audit-level=high"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
     "dotenv": "^17.4.2",
     "prisma": "^7.8.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.8.0"
   }
 }

@@ -1,0 +1,9 @@
+// اختياري — أدوات Prisma CLI فقط. تطبيق الـ API يستخدم Sequelize (انظر backend/src/config/db.js).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}

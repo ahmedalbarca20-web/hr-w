@@ -162,6 +162,7 @@ function zkBuildSetUserPayload72({ uid, role, pin8, name, cardno, userId }) {
  * @param {boolean} [opts.include_users=true]
  * @param {number} [opts.max_users=80]
  * @param {boolean} [opts.include_attendance_size=true]
+ * @param {boolean} [opts.minimal_probe=false] — skip version/time/extra calls; only serial (+ getInfo if serial missing)
  */
 async function probeSnapshot(opts) {
   const ip = typeof opts.ip === 'string' ? opts.ip.trim() : '';
@@ -175,9 +176,10 @@ async function probeSnapshot(opts) {
     : (Number.isFinite(envUdp) && envUdp >= 1024 && envUdp <= 65535
       ? envUdp
       : 40000 + Math.floor(Math.random() * 20000));
-  const include_users = opts.include_users !== false;
+  const minimal_probe = opts.minimal_probe === true;
+  const include_users = !minimal_probe && opts.include_users !== false;
   const max_users = Math.min(500, Math.max(1, Number(opts.max_users) || 80));
-  const include_attendance_size = opts.include_attendance_size !== false;
+  const include_attendance_size = !minimal_probe && opts.include_attendance_size !== false;
 
   const zk = new ZktecoJs(ip, port, socket_timeout_ms, udp_local_port);
   const result = {
@@ -215,9 +217,17 @@ async function probeSnapshot(opts) {
     result.connection_type = zk.connectionType;
 
     result.serial_number = await safe('getSerialNumber', () => zk.getSerialNumber());
-    result.firmware_version = await safe('getDeviceVersion', () => zk.getDeviceVersion());
-    result.device_time = await safe('getTime', () => zk.getTime());
-    result.info = await safe('getInfo', () => zk.getInfo());
+    const serialFilled = result.serial_number != null && String(result.serial_number).trim() !== '';
+
+    if (minimal_probe) {
+      if (!serialFilled) {
+        result.info = await safe('getInfo', () => zk.getInfo());
+      }
+    } else {
+      result.firmware_version = await safe('getDeviceVersion', () => zk.getDeviceVersion());
+      result.device_time = await safe('getTime', () => zk.getTime());
+      result.info = await safe('getInfo', () => zk.getInfo());
+    }
 
     if (include_users) {
       const rawUsers = await safe('getUsers', () => zk.getUsers());

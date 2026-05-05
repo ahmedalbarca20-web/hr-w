@@ -475,10 +475,11 @@ async function syncDeviceUsers(device_id, company_id, employee_ids = []) {
 // PROBE CONNECTION (HTTP to device LAN — ZKTeco / similar web panels)
 // ════════════════════════════════════════════════════════════════════════════
 
-const PROBE_TIMEOUT_MS = 4500;
+const PROBE_TIMEOUT_MS = 3200;
+const PROBE_QUICK_TIMEOUT_MS = 1400;
 const PROBE_MAX_BODY   = 200 * 1024;
 
-function httpGetText(targetUrl) {
+function httpGetText(targetUrl, timeoutMs = PROBE_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     let u;
     try {
@@ -495,7 +496,7 @@ function httpGetText(targetUrl) {
         port,
         path     : u.pathname + u.search,
         method   : 'GET',
-        timeout  : PROBE_TIMEOUT_MS,
+        timeout  : timeoutMs,
         headers  : {
           'User-Agent': 'Mozilla/5.0 (compatible; HRPortal-DeviceProbe/1.0)',
           Accept       : 'text/html,application/xhtml+xml,text/plain,*/*',
@@ -604,12 +605,32 @@ function buildProbeUrls(host, userPort) {
   return urls;
 }
 
+/** بضعة روابط فقط — لواجهة «اختبار الاتصال» حتى لا يبقى الـ API دقائق على جهاز غير متاح */
+function buildQuickProbeUrls(host, userPort) {
+  const literal = networkHostForUrl(host);
+  const pNum = Number(userPort);
+  const serialPath = '/cgi-bin/getoption.cgi?action=getoption&kind=SerialNumber';
+  const urls = [];
+  const add = (prt) => {
+    if (!Number.isFinite(prt) || prt < 1 || prt > 65535) return;
+    const proto = prt === 443 ? 'https' : 'http';
+    urls.push(`${proto}://${literal}:${prt}${serialPath}`);
+  };
+  add(80);
+  add(8080);
+  if (Number.isFinite(pNum) && pNum > 0 && pNum !== 80 && pNum !== 8080) add(pNum);
+  return urls;
+}
+
 /**
  * Try common ZKTeco-style HTTP endpoints from the app server toward the device.
  * Port 4370 is often machine protocol only — we also try 80/8080 automatically.
+ * @param {object} opts
+ * @param {boolean} [opts.quick=true] — روابط أقل + مهلة أقصر (افتراضي سريع)
  */
-async function probeDeviceConnection({ ip_address, port }) {
-  const scanUrls = buildProbeUrls(ip_address, port);
+async function probeDeviceConnection({ ip_address, port, quick = true }) {
+  const scanUrls = quick ? buildQuickProbeUrls(ip_address, port) : buildProbeUrls(ip_address, port);
+  const perTimeout = quick ? PROBE_QUICK_TIMEOUT_MS : PROBE_TIMEOUT_MS;
   let lastErr     = null;
   let sawHttp     = false;
   const portTried  = new Set();
@@ -619,7 +640,7 @@ async function probeDeviceConnection({ ip_address, port }) {
       const u = new URL(url);
       const pStr = u.port || (u.protocol === 'https:' ? '443' : '80');
       portTried.add(pStr);
-      const { status, body } = await httpGetText(url);
+      const { status, body } = await httpGetText(url, perTimeout);
       sawHttp = true;
       if (status >= 200 && status < 500) {
         const serial_number    = extractSerialFromBody(body);
@@ -724,6 +745,7 @@ async function probeZkSocket(body) {
     port                     : body.port,
     socket_timeout_ms        : body.socket_timeout_ms,
     udp_local_port           : body.udp_local_port,
+    minimal_probe            : body.minimal_probe,
     include_users            : body.include_users,
     max_users                : body.max_users,
     include_attendance_size  : body.include_attendance_size,
@@ -761,6 +783,7 @@ async function debugZkConnection(body) {
         port                     : body.port,
         socket_timeout_ms        : body.socket_timeout_ms,
         udp_local_port           : body.udp_local_port,
+        minimal_probe            : body.minimal_probe,
         include_users            : body.include_users,
         max_users                : body.max_users,
         include_attendance_size  : body.include_attendance_size,
@@ -775,7 +798,7 @@ async function debugZkConnection(body) {
   let http = null;
   let httpErr = null;
   try {
-    http = await probeDeviceConnection({ ip_address: body.ip_address, port: body.port });
+    http = await probeDeviceConnection({ ip_address: body.ip_address, port: body.port, quick: false });
   } catch (e) {
     httpErr = e.message;
     http = { ok: false, message: e.message };
@@ -862,11 +885,15 @@ async function readZkFromRegisteredDevice(device_id, company_id, overrides = {})
   }
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+  const regUdp = Number.isFinite(Number(overrides.udp_local_port))
+    ? Math.min(65535, Math.max(1024, Number(overrides.udp_local_port)))
+    : undefined;
   return zktecoSocket.probeSnapshot({
     ip                       : host,
     port                     : overrides.port ?? 4370,
     socket_timeout_ms        : overrides.socket_timeout_ms ?? 8000,
-    udp_local_port           : overrides.udp_local_port ?? 5000,
+    udp_local_port           : regUdp,
+    minimal_probe            : overrides.minimal_probe === true,
     include_users            : overrides.include_users !== false,
     max_users                : overrides.max_users ?? 80,
     /** Many firmwares return a short buffer for CMD_GET_FREE_SIZES — zkteco-js readUIntLE(40,4) throws. Opt-in only. */

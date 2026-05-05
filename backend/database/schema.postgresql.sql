@@ -1,14 +1,11 @@
 /*
-  HR System — PostgreSQL schema (Supabase / managed PG 14+)
+  HR System — PostgreSQL schema (PG 14+)
   Encoding: UTF-8
 
   خطوات جاهزة (انسخ والصق):
-    1) Supabase → SQL Editor → لصق هذا الملف كاملاً → Run.
-    2) Supabase → Settings → Database → انسخ Connection string (URI).
-    3) انسخ backend/database/supabase.env.example إلى backend/.env واملأ DATABASE_URL و JWT_*.
-    4) في مجلد backend: npm install ثم npm run start
-
-  تفاصيل إضافية: backend/database/SUPABASE-SETUP.txt
+    1) في عميل SQL (psql، DBeaver، أو لوحة استضافة Postgres): نفّذ هذا الملف كاملاً.
+    2) انسخ backend/database/postgresql.env.example إلى backend/.env واملأ DATABASE_URL و JWT_*.
+    3) في مجلد backend: npm install ثم npm run start
 
   Notes:
     - Mirrors Sequelize models (underscored columns, snake_case tables).
@@ -630,5 +627,5 @@ ALTER TABLE device_logs
   ADD CONSTRAINT fk_device_logs_surprise_event
   FOREIGN KEY (surprise_event_id) REFERENCES surprise_attendance_events (id) ON DELETE SET NULL;
 
--- ── Supabase: enable RLS later if exposing PostgREST; backend uses service role ──
+-- ── Postgres: RLS اختياري إذا عرّضت الجداول عبر PostgREST؛ الـ API هنا يستخدم Sequelize ──
 -- ALTER TABLE companies ENABLE ROW LEVEL SECURITY;

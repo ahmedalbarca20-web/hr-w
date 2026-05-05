@@ -4,7 +4,7 @@ const path      = require('path');
 const { Sequelize, DataTypes } = require('sequelize');
 const pg = require('pg');
 
-const databaseUrl = (process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || '').trim();
+const databaseUrl = String(process.env.DATABASE_URL || '').trim();
 const inferredDialect = /^postgres(ql)?:\/\//i.test(databaseUrl) ? 'postgres' : '';
 const dialectRaw = String(process.env.DB_DIALECT || inferredDialect || 'mysql').toLowerCase();
 /** Sequelize uses 'postgres' not 'postgresql'. */
@@ -33,7 +33,8 @@ const sharedDefine = {
   updatedAt      : 'updated_at',
 };
 
-const devLogging = process.env.NODE_ENV === 'development'
+/** SQL إلى الطرفية يبطئ الطلبات جداً (خصوصاً SQLite). فعّل يدوياً: DB_LOG_SQL=1 */
+const devLogging = String(process.env.DB_LOG_SQL || '').trim() === '1'
   ? (sql) => console.log('[SQL]', sql)
   : false;
 
@@ -47,7 +48,7 @@ const readIntEnv = (name, fallback) => {
 const isServerlessRuntime = process.env.VERCEL === '1' || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
 
 /**
- * Default PG pool is intentionally small for serverless + Supabase session limits.
+ * Default PG pool is intentionally small for serverless Postgres session limits.
  * Can be overridden by env vars: DB_POOL_MAX / DB_POOL_MIN / DB_POOL_ACQUIRE_MS / DB_POOL_IDLE_MS.
  */
 const defaultPoolMax = dialect === 'postgres'
@@ -352,7 +353,7 @@ const connectDB = async () => {
     await ensurePushSubscriptionsTable();
     await ensureCompanyFeaturesTable();
     if (dialect === 'postgres') {
-      console.log('[DB] Connected to PostgreSQL (Supabase / PG).');
+      console.log('[DB] Connected to PostgreSQL.');
     } else {
       console.log('[DB] Connected to MySQL/MariaDB successfully.');
     }
