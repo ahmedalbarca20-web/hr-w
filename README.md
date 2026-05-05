@@ -4,16 +4,24 @@
 Bilingual (Arabic / English) HR system built with **Node.js + Express + React + MariaDB + JWT**.
 
 ## Stack
-| Layer | Technology |
-|-------|------------|
-| Backend | Node.js 20, Express 5, Sequelize |
-| Database | MariaDB 11 |
-| Auth | JWT (Access + Refresh tokens) |
-| Frontend | React 18, Vite, React Router v6 |
-| i18n | i18next (AR ⇄ EN, RTL support) |
-| State | Redux Toolkit |
-| Container | Docker + Docker Compose |
-| Proxy | Nginx (production) |
+<table>
+  <thead>
+    <tr>
+      <th>Layer</th>
+      <th>Technology</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Backend</td><td>Node.js 20, Express 5, Sequelize</td></tr>
+    <tr><td>Database</td><td>MariaDB 11</td></tr>
+    <tr><td>Auth</td><td>JWT (Access + Refresh tokens)</td></tr>
+    <tr><td>Frontend</td><td>React 18, Vite, React Router v6</td></tr>
+    <tr><td>i18n</td><td>i18next (AR ⇄ EN, RTL support)</td></tr>
+    <tr><td>State</td><td>Redux Toolkit</td></tr>
+    <tr><td>Container</td><td>Docker + Docker Compose</td></tr>
+    <tr><td>Proxy</td><td>Nginx (production)</td></tr>
+  </tbody>
+</table>
 
 ## Quick Start (Development)
 ```bash
