@@ -829,6 +829,47 @@ async function simulateTestIngest(device_id, company_id, { card_number = 'TEST-P
 
 /** zkteco-js TCP/UDP read — arbitrary IP (e.g. from device form before save). */
 async function probeZkSocket(body) {
+  const agentBase = localAgentBaseUrl();
+  if (agentBase) {
+    const controller = new AbortController();
+    const timeoutMs = 2200;
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(`${agentBase}/execute`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(localAgentAuthToken() ? { authorization: `Bearer ${localAgentAuthToken()}` } : {}),
+        },
+        body: JSON.stringify({
+          action: 'probe',
+          device_ip: body.ip_address,
+          port: body.port,
+          timeout_ms: Math.min(1000, Math.max(200, Number(body.socket_timeout_ms) || 800)),
+        }),
+        signal: controller.signal,
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (resp.ok && payload && typeof payload === 'object') {
+        return {
+          ok: Boolean(payload.ok),
+          serial_number: payload.serial_number || null,
+          firmware_version: null,
+          connection_type: 'local_agent',
+          source: 'local_agent',
+          duration_ms: payload.duration_ms ?? null,
+          message: payload.message || (payload.ok ? 'Local Agent probe succeeded.' : 'Local Agent probe failed.'),
+          errors: payload.ok ? [] : [{ code: payload.code || 'LOCAL_AGENT_PROBE_FAIL', message: payload.message || 'Local agent probe failed' }],
+          hint_ar: payload.hint || (payload.ok ? null : 'تحقق من تشغيل Local Agent وربط Cloudflare Tunnel.'),
+        };
+      }
+    } catch (_e) {
+      // Fall back to DTR bridge / direct zkteco-js below.
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
   const bridge = dtrBridgeBaseUrl();
   if (bridge) {
     return dtrZkBridge.probeSnapshotFromBridge(bridge, body);
