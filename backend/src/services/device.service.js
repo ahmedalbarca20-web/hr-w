@@ -18,6 +18,14 @@ const { DEFAULT_IANA } = require('../utils/timezone');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+function localAgentBaseUrl() {
+  return String(process.env.LOCAL_AGENT_URL || '').trim().replace(/\/$/, '');
+}
+
+function localAgentAuthToken() {
+  return String(process.env.LOCAL_AGENT_TOKEN || '').trim();
+}
+
 /** Base URL of [dtr.zkteco.api](https://github.com/itechxcellence/dtr.zkteco.api) on the LAN (or ngrok). When set, ZK reads use HTTP snapshot instead of TCP from this process. */
 function dtrBridgeBaseUrl() {
   return String(process.env.DTR_ZKTECO_API_URL || '').trim().replace(/\/$/, '');
@@ -629,6 +637,90 @@ function buildQuickProbeUrls(host, userPort) {
  * @param {boolean} [opts.quick=true] — روابط أقل + مهلة أقصر (افتراضي سريع)
  */
 async function probeDeviceConnection({ ip_address, port, quick = true }) {
+  const agentBase = localAgentBaseUrl();
+  let agentFailure = null;
+  if (agentBase) {
+    const controller = new AbortController();
+    const timeoutMs = 1800;
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(`${agentBase}/probe-connection`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(localAgentAuthToken() ? { authorization: `Bearer ${localAgentAuthToken()}` } : {}),
+        },
+        body: JSON.stringify({ ip_address, port, quick }),
+        signal: controller.signal,
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const msg = payload?.error || `Local agent HTTP ${resp.status}`;
+        agentFailure = {
+          ok: false,
+          serial_number: null,
+          firmware_version: null,
+          message: `Local Agent error: ${msg}`,
+          hint: 'تحقق أن Local Agent يعمل على نفس شبكة الجهاز، وأن LOCAL_AGENT_TOKEN صحيح.',
+        };
+      } else {
+        return {
+          ...payload,
+          source: 'local_agent',
+        };
+      }
+    } catch (e) {
+      const isAbort = e && (e.name === 'AbortError' || /aborted|abort/i.test(String(e.message || '')));
+      agentFailure = {
+        ok: false,
+        serial_number: null,
+        firmware_version: null,
+        message: isAbort
+          ? 'Local Agent timeout'
+          : `Local Agent unreachable: ${e.message || e}`,
+        hint: 'تعذر الوصول إلى Local Agent من Vercel. تأكد من رابط LOCAL_AGENT_URL (ngrok) وأن الخدمة تعمل.',
+      };
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  const dtrBase = dtrBridgeBaseUrl();
+  if (dtrBase) {
+    try {
+      const snap = await dtrZkBridge.probeSnapshotFromBridge(dtrBase, {
+        ip_address,
+        port,
+        include_users: false,
+        include_attendance_size: false,
+      });
+      const info = snap?.info && typeof snap.info === 'object' ? snap.info : {};
+      const serial = (snap?.serial_number
+        || info.serialNumber
+        || info.SerialNumber
+        || info.serial_number
+        || info.sn
+        || null);
+      return {
+        ok: Boolean(snap?.ok),
+        serial_number: serial ? String(serial).trim() : null,
+        firmware_version: snap?.firmware_version || null,
+        source: 'dtr_bridge',
+        message: serial
+          ? 'تم الوصول عبر Local Bridge.'
+          : 'تم الوصول عبر Local Bridge لكن لم يُقرأ الرقم التسلسلي.',
+        ...(agentFailure ? { agent_error: agentFailure.message } : {}),
+      };
+    } catch (e) {
+      // Keep going to direct HTTP probe below.
+      if (!agentFailure) {
+        agentFailure = {
+          message: `DTR bridge error: ${e?.message || e}`,
+        };
+      }
+    }
+  }
+
   const scanUrls = quick ? buildQuickProbeUrls(ip_address, port) : buildProbeUrls(ip_address, port);
   const perTimeout = quick ? PROBE_QUICK_TIMEOUT_MS : PROBE_TIMEOUT_MS;
   let lastErr     = null;
@@ -670,6 +762,7 @@ async function probeDeviceConnection({ ip_address, port, quick = true }) {
     firmware_version: null,
     hint           : lanHint,
     ports_tried    : portsSorted,
+    ...(agentFailure ? { agent_error: agentFailure.message } : {}),
     message        : sawHttp
       ? 'الجهاز ردّ لكن تعذّر قراءة الرقم التسلسلي تلقائياً. أدخله يدوياً من ملصق الجهاز أو واجهة الويب.'
       : `تعذّر الاتصال بواجهة الويب للجهاز. جرّبنا المنافذ: ${portsLine}. آخر خطأ: ${lastErr || 'no response'}. `
