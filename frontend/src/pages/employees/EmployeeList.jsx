@@ -10,7 +10,8 @@ import SearchBar from '../../components/common/SearchBar';
 import Modal from '../../components/common/Modal';
 import Alert from '../../components/common/Alert';
 import EmployeeForm from '../../components/forms/EmployeeForm';
-import { listEmployees, deleteEmployee } from '../../api/employee.api';
+import { listEmployees, deleteEmployee, patchEmployee } from '../../api/employee.api';
+import { listShifts } from '../../api/shift.api';
 import { useAuth } from '../../context/AuthContext';
 import { useTenantCompanyId } from '../../hooks/useTenantCompanyId';
 import { isSuperAdminUser } from '../../utils/tenantScope';
@@ -40,6 +41,11 @@ export default function EmployeeList() {
   const [alert, setAlert]       = useState(null);
   const [rowSelection, setRowSelection] = useState({});
   const [actionsMenu, setActionsMenu] = useState(null);
+  const [showAllRows, setShowAllRows] = useState(false);
+  const [shifts, setShifts] = useState([]);
+  const [bulkShiftModal, setBulkShiftModal] = useState(false);
+  const [bulkShiftId, setBulkShiftId] = useState('');
+  const [bulkShiftSaving, setBulkShiftSaving] = useState(false);
   const headerSelectRef = useRef(null);
 
   const fetchData = useCallback(async () => {
@@ -51,15 +57,20 @@ export default function EmployeeList() {
     }
     setLoading(true);
     try {
-      const { data } = await listEmployees({ page, limit: 10, search, company_id: companyId });
+      const { data } = await listEmployees({
+        page,
+        limit: showAllRows ? 2000 : 10,
+        search,
+        company_id: companyId,
+      });
       setRows(data.data?.data || []);
-      setTotalPages(data.data?.meta?.totalPages || 1);
+      setTotalPages(showAllRows ? 1 : (data.data?.meta?.totalPages || 1));
     } catch {
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [page, search, companyId]);
+  }, [page, search, companyId, showAllRows]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -67,6 +78,19 @@ export default function EmployeeList() {
     setRowSelection({});
     setActionsMenu(null);
   }, [page]);
+
+  useEffect(() => {
+    if (!companyId) {
+      setShifts([]);
+      return;
+    }
+    listShifts({ include_inactive: false })
+      .then(({ data }) => {
+        const rowsShift = data?.data?.shifts || data?.data || [];
+        setShifts(Array.isArray(rowsShift) ? rowsShift : []);
+      })
+      .catch(() => setShifts([]));
+  }, [companyId]);
 
   useEffect(() => {
     if (actionsMenu === null) return undefined;
@@ -165,6 +189,39 @@ export default function EmployeeList() {
       fetchData();
     } catch (e) {
       setAlert({ type: 'danger', msg: e.response?.data?.message || 'Error' });
+    }
+  };
+
+  const openBulkShiftModal = () => {
+    const targets = rows.filter((r) => rowSelection[r.id]);
+    if (!targets.length) {
+      setActionsMenu(null);
+      return;
+    }
+    setActionsMenu(null);
+    setBulkShiftId('');
+    setBulkShiftModal(true);
+  };
+
+  const handleBulkAssignShift = async () => {
+    if (!companyId) return;
+    const shift_id = Number(bulkShiftId);
+    if (!Number.isInteger(shift_id) || shift_id < 1) return;
+    const targets = rows.filter((r) => rowSelection[r.id]);
+    if (!targets.length) return;
+    setBulkShiftSaving(true);
+    try {
+      for (const r of targets) {
+        await patchEmployee(r.id, { shift_id, company_id: companyId });
+      }
+      setBulkShiftModal(false);
+      setRowSelection({});
+      setAlert({ type: 'success', msg: `تم ربط ${targets.length} موظف(ين) بالوقت المحدد.` });
+      fetchData();
+    } catch (e) {
+      setAlert({ type: 'danger', msg: e.response?.data?.message || e.response?.data?.error || 'تعذّر ربط الموظفين بالوقت' });
+    } finally {
+      setBulkShiftSaving(false);
     }
   };
 
@@ -290,6 +347,16 @@ export default function EmployeeList() {
             <p className="text-white/60 text-xs">{rows.length} {t('employee.title')}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant={showAllRows ? 'primary' : 'ghost'}
+              icon="view_list"
+              onClick={() => {
+                setShowAllRows((v) => !v);
+                setPage(1);
+              }}
+            >
+              {showAllRows ? 'عرض حسب الصفحات' : 'عرض كل الموظفين'}
+            </Button>
             {selectedCount > 0 ? (
               <div className="inline-block" data-employee-actions>
                 <button
@@ -383,21 +450,73 @@ export default function EmployeeList() {
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              className={`${menuBtnClass} text-red-700`}
-              onClick={() => {
-                setActionsMenu(null);
-                void handleBulkDelete();
-              }}
-            >
-              <span className="material-icons-round text-base">delete_outline</span>
-              {t('employee.bulk_delete_selected')}
-            </button>
+            <>
+              <button
+                type="button"
+                className={menuBtnClass}
+                onClick={openBulkShiftModal}
+              >
+                <span className="material-icons-round text-base text-indigo-700">schedule</span>
+                ربط المحددين بالوقت
+              </button>
+              <button
+                type="button"
+                className={`${menuBtnClass} text-red-700`}
+                onClick={() => {
+                  setActionsMenu(null);
+                  void handleBulkDelete();
+                }}
+              >
+                <span className="material-icons-round text-base">delete_outline</span>
+                {t('employee.bulk_delete_selected')}
+              </button>
+            </>
           )}
         </div>,
         document.body,
       )}
+
+      <Modal
+        open={bulkShiftModal}
+        onClose={() => {
+          if (bulkShiftSaving) return;
+          setBulkShiftModal(false);
+        }}
+        title="ربط المحددين بالوقت"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">اختر وقت الدوام (Shift) لتطبيقه على الموظفين المحددين.</p>
+          <div>
+            <label className="label">الوقت</label>
+            <select
+              className="input"
+              value={bulkShiftId}
+              onChange={(e) => setBulkShiftId(e.target.value)}
+              disabled={bulkShiftSaving}
+            >
+              <option value="">— اختر الوقت —</option>
+              {shifts.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name || s.name_ar || `Shift #${s.id}`}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <Button variant="ghost" onClick={() => setBulkShiftModal(false)} disabled={bulkShiftSaving}>
+              إلغاء
+            </Button>
+            <Button
+              onClick={handleBulkAssignShift}
+              loading={bulkShiftSaving}
+              disabled={!bulkShiftId || bulkShiftSaving}
+            >
+              تطبيق على المحددين
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -2,6 +2,29 @@
 
 const iconv = require('iconv-lite');
 
+function countArabicChars(s) {
+  return (String(s || '').match(/[\u0600-\u06FF]/g) || []).length;
+}
+
+function cleanupDecoded(s) {
+  return String(s || '').replace(/\0/g, '').replace(/\uFFFD/g, '').trim();
+}
+
+/**
+ * Detect the common UTF-8->latin1 mojibake pattern:
+ *   "Ø­Ø³ÙŠÙ†" -> "حسين"
+ */
+function recoverFromMojibakeLatin1(str) {
+  const s = String(str || '');
+  if (!s) return '';
+  if (!/[ØÙÚÛÇÐ]/.test(s)) return '';
+  try {
+    return cleanupDecoded(Buffer.from(s, 'latin1').toString('utf8'));
+  } catch (_) {
+    return '';
+  }
+}
+
 /**
  * zkteco-js decodes ZK user names with `.toString('ascii')`, which corrupts Arabic
  * and other UTF-8 names stored on the device. Patch the shared helper **before**
@@ -17,24 +40,42 @@ function decodeNameField(buf, start, maxLen) {
   const raw = z >= 0 ? slice.subarray(0, z) : slice;
   if (raw.length === 0) return '';
 
-  let utf = raw.toString('utf8').replace(/\uFFFD/g, '').trim();
-  if (utf && /[^\u0000-\u007F]/.test(utf)) return utf;
+  const candidates = [];
+  const add = (v) => {
+    const clean = cleanupDecoded(v);
+    if (clean) candidates.push(clean);
+  };
+
+  const utf = cleanupDecoded(raw.toString('utf8'));
+  add(utf);
+  add(recoverFromMojibakeLatin1(utf));
 
   const latin = raw.toString('latin1').trim();
   if (latin) {
     try {
-      const recovered = Buffer.from(latin, 'latin1').toString('utf8').replace(/\uFFFD/g, '').trim();
-      if (recovered && /[^\u0000-\u007F]/.test(recovered)) return recovered;
+      add(Buffer.from(latin, 'latin1').toString('utf8'));
     } catch (_) { /* ignore */ }
-    if (/[^\x00-\x7F]/.test(latin)) return latin;
+    add(latin);
+    add(recoverFromMojibakeLatin1(latin));
   }
 
   try {
-    const cp1256 = iconv.decode(raw, 'windows-1256').replace(/\0/g, '').replace(/\uFFFD/g, '').trim();
-    if (cp1256 && /[\u0600-\u06FF]/.test(cp1256)) return cp1256;
+    add(iconv.decode(raw, 'windows-1256'));
   } catch (_) { /* ignore */ }
 
-  return raw.toString('ascii').replace(/\0/g, '').trim();
+  // Prefer the candidate with the highest Arabic letters count.
+  // This preserves ASCII-only names while fixing Arabic mojibake cases.
+  const unique = [...new Set(candidates)];
+  if (unique.length) {
+    unique.sort((a, b) => {
+      const arDiff = countArabicChars(b) - countArabicChars(a);
+      if (arDiff !== 0) return arDiff;
+      return b.length - a.length;
+    });
+    return unique[0];
+  }
+
+  return cleanupDecoded(raw.toString('ascii'));
 }
 
 /**

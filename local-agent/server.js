@@ -5,13 +5,14 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const iconv = require('iconv-lite');
+const zktecoSocket = require('../backend/src/services/zktecoSocket.service');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
 const PORT = Number(process.env.LOCAL_AGENT_PORT || 8099);
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const DEFAULT_TIMEOUT_MS = 1000;
+const DEFAULT_TIMEOUT_MS = 800;
 
 if (!TOKEN) {
   throw new Error('LOCAL_AGENT_TOKEN is required for secure mode');
@@ -120,15 +121,18 @@ async function runProbe({ ip, port, timeoutMsRaw }) {
     const bodyBuf = Buffer.from(resp.data || '');
     const decoded = decodeBest(bodyBuf);
     const serial = extractSerial(decoded);
+    const reachable = Number(resp.status) >= 200 && Number(resp.status) < 500;
     const out = {
-      ok: Boolean(serial),
+      ok: reachable,
       serial_number: serial || null,
       status: resp.status,
       probed_url: url,
       duration_ms: Date.now() - started,
       source: 'local_agent',
       decoded_text_sample: decoded.slice(0, 250),
-      message: serial ? 'Serial read successfully' : 'Device responded but serial not parsed',
+      message: serial
+        ? 'Serial read successfully'
+        : (reachable ? 'Device reachable but serial not parsed' : 'Device probe failed'),
     };
     log('probe_success', { ip, port, ms: out.duration_ms, ok: out.ok, status: resp.status });
     return out;
@@ -136,16 +140,25 @@ async function runProbe({ ip, port, timeoutMsRaw }) {
     const code = e?.code || null;
     const msg = String(e?.message || 'request failed');
     const isTimeout = code === 'ECONNABORTED' || /timeout/i.test(msg);
+    const isConnectionReset = code === 'ECONNRESET';
+    const reachableByReset = isConnectionReset && /read ECONNRESET/i.test(msg);
     const out = {
-      ok: false,
+      ok: reachableByReset,
       serial_number: null,
       source: 'local_agent',
       duration_ms: Date.now() - started,
       code,
-      message: isTimeout ? 'Device timeout' : msg,
-      hint: isTimeout ? 'تحقق من IP الجهاز والمنفذ وأن الجهاز online على نفس LAN' : 'تحقق من الشبكة والجدار الناري',
+      message: isTimeout
+        ? 'Device timeout'
+        : (reachableByReset ? 'Device reachable but closed connection before serial response' : msg),
+      hint: isTimeout
+        ? 'تحقق من IP الجهاز والمنفذ وأن الجهاز online على نفس LAN'
+        : (reachableByReset ? 'يمكن المتابعة وحفظ الجهاز وإدخال السيريال يدويا' : 'تحقق من الشبكة والجدار الناري'),
     };
-    log(isTimeout ? 'probe_timeout' : 'probe_fail', { ip, port, ms: out.duration_ms, code, message: msg });
+    log(
+      isTimeout ? 'probe_timeout' : (reachableByReset ? 'probe_reachable_connreset' : 'probe_fail'),
+      { ip, port, ms: out.duration_ms, code, message: msg, ok: out.ok },
+    );
     return out;
   }
 }
@@ -162,14 +175,91 @@ app.post('/probe-connection', auth, async (req, res) => {
 app.post('/execute', auth, async (req, res) => {
   const action = String(req.body?.action || '').trim().toLowerCase();
   const ip = String(req.body?.device_ip || req.body?.ip_address || '').trim();
-  const port = Number.isFinite(Number(req.body?.port)) && Number(req.body.port) > 0 ? Number(req.body.port) : 80;
+  const defaultPort = action === 'list_users' ? 4370 : 80;
+  const port = Number.isFinite(Number(req.body?.port)) && Number(req.body.port) > 0 ? Number(req.body.port) : defaultPort;
   const timeoutMsRaw = Number(req.body?.timeout_ms || DEFAULT_TIMEOUT_MS);
-  if (action !== 'probe') return res.status(400).json({ ok: false, error: 'Unknown action' });
   if (!ip) return res.status(422).json({ ok: false, error: 'device_ip is required' });
-  const out = await runProbe({ ip, port, timeoutMsRaw });
-  return res.status(200).json(out);
+
+  if (action === 'probe') {
+    const out = await runProbe({ ip, port, timeoutMsRaw });
+    return res.status(200).json(out);
+  }
+
+  if (action === 'list_users') {
+    const socketTimeoutMs = Number.isFinite(Number(req.body?.socket_timeout_ms))
+      ? Math.min(120000, Math.max(8000, Number(req.body.socket_timeout_ms)))
+      : 45000;
+    const udpLocalPort = Number.isFinite(Number(req.body?.udp_local_port))
+      ? Math.min(65535, Math.max(1024, Number(req.body.udp_local_port)))
+      : 5000;
+    const started = Date.now();
+    const result = await zktecoSocket.fetchZkUsersList({
+      ip,
+      port: Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+      socket_timeout_ms: socketTimeoutMs,
+      udp_local_port: udpLocalPort,
+    });
+    log(result?.ok ? 'list_users_success' : 'list_users_fail', {
+      ip,
+      port,
+      ms: Date.now() - started,
+      ok: Boolean(result?.ok),
+      count: Array.isArray(result?.users) ? result.users.length : 0,
+    });
+    return res.status(200).json({
+      ok: Boolean(result?.ok),
+      users: Array.isArray(result?.users) ? result.users : [],
+      user_count_on_device: Array.isArray(result?.users) ? result.users.length : 0,
+      errors: Array.isArray(result?.errors) ? result.errors : [],
+      connection_type: result?.connection_type || null,
+      source: 'local_agent',
+      duration_ms: Date.now() - started,
+    });
+  }
+
+  if (action === 'pull_attendance') {
+    const socketTimeoutMs = Number.isFinite(Number(req.body?.socket_timeout_ms))
+      ? Math.min(120000, Math.max(8000, Number(req.body.socket_timeout_ms)))
+      : 90000;
+    const started = Date.now();
+    const result = await zktecoSocket.fetchAttendanceLogs({
+      ip,
+      port: Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+      socket_timeout_ms: socketTimeoutMs,
+    });
+    log(result?.ok ? 'pull_attendance_success' : 'pull_attendance_fail', {
+      ip,
+      port,
+      ms: Date.now() - started,
+      ok: Boolean(result?.ok),
+      count: Array.isArray(result?.records) ? result.records.length : 0,
+    });
+    return res.status(200).json({
+      ok: Boolean(result?.ok),
+      connection_type: result?.connection_type || null,
+      attendance_size: result?.attendance_size ?? null,
+      records: Array.isArray(result?.records) ? result.records : [],
+      device_users: Array.isArray(result?.device_users) ? result.device_users : [],
+      errors: Array.isArray(result?.errors) ? result.errors : [],
+      attendance_retry_without_disable: Boolean(result?.attendance_retry_without_disable),
+      source: 'local_agent',
+      duration_ms: Date.now() - started,
+    });
+  }
+
+  return res.status(400).json({ ok: false, error: 'Unknown action' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  log('agent_started', { port: PORT, token_protected: Boolean(TOKEN) });
-});
+// Export helpers so the polling worker can reuse the same probe implementation.
+module.exports = {
+  app,
+  log,
+  runProbe,
+  DEFAULT_TIMEOUT_MS,
+};
+
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    log('agent_started', { port: PORT, token_protected: Boolean(TOKEN) });
+  });
+}

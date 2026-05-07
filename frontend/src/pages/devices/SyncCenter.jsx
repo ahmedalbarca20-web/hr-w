@@ -24,6 +24,21 @@ function normalizeZkUserNameKey(name) {
     .toLowerCase();
 }
 
+function extractErrorText(err, fallback) {
+  const apiErr = err?.response?.data?.error;
+  if (typeof apiErr === 'string' && apiErr.trim()) return apiErr;
+  if (apiErr && typeof apiErr === 'object') {
+    const code = typeof apiErr.code === 'string' ? apiErr.code : '';
+    const message = typeof apiErr.message === 'string' ? apiErr.message : '';
+    const parts = [code, message].filter(Boolean);
+    if (parts.length) return parts.join(': ');
+  }
+  const msg = err?.response?.data?.message;
+  if (typeof msg === 'string' && msg.trim()) return msg;
+  if (typeof err?.message === 'string' && err.message.trim()) return err.message;
+  return fallback;
+}
+
 function ProgressBar({ value, color }) {
   return (
     <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
@@ -93,7 +108,7 @@ export default function SyncCenter() {
       setDeviceZkUsers(rows);
     } catch (e) {
       setDeviceZkUsers([]);
-      setDeviceUsersError(e.response?.data?.error || e.message || 'تعذّر قراءة مستخدمي الجهاز');
+      setDeviceUsersError(extractErrorText(e, 'تعذّر قراءة مستخدمي الجهاز'));
     } finally {
       setDeviceUsersLoading(false);
     }
@@ -288,7 +303,7 @@ export default function SyncCenter() {
       setPickerDevice(null);
       await fetchDevices();
     } catch (e) {
-      setSyncMsg(e.response?.data?.error || 'فشل الاستيراد');
+      setSyncMsg(extractErrorText(e, 'فشل الاستيراد'));
     } finally {
       setPullSubmitting(false);
     }
@@ -358,8 +373,7 @@ export default function SyncCenter() {
       setSyncMsg(`${parts.join(' · ')}${tail}`);
       await fetchDevices();
     } catch (e) {
-      const err = e.response?.data;
-      const msg = err?.error || err?.message || e.message || 'تعذّر سحب البصمات';
+      const msg = extractErrorText(e, 'تعذّر سحب البصمات');
       setSyncMsg(msg);
     } finally {
       setAttPullLoading(null);

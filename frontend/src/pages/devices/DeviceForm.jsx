@@ -7,7 +7,8 @@ import {
   updateDevice,
   probeDeviceConnection,
   probeZkSocket,
-  getDevicePushConfig,
+  createProbeJob,
+  getProbeJobStatus,
 } from '../../api/device.api';
 import { listDepartments } from '../../api/department.api';
 import { applyZkSnapshotToForm, extractZkSerialFromSnapshot, unwrapZkPayload, zkFailureMessage } from '../../lib/deviceZk';
@@ -23,63 +24,20 @@ function Field({ label, children, error }) {
   );
 }
 
-/** نص واحد يلصقه المستخدم في ملاحظة أو يرسله لمن يضبط الجهاز — يشمل curl جاهز عند توفر المفتاح. */
-function buildDeviceBindingClipboard({
-  deviceName,
-  serial,
-  pushUrl,
-  heartbeatUrl,
-  apiKey,
-  ipOnForm,
-}) {
-  const keyForCurl = apiKey && String(apiKey).trim() ? String(apiKey).trim() : 'PUT_API_KEY_HERE';
-  const keyHuman = apiKey && String(apiKey).trim()
-    ? String(apiKey).trim()
-    : '(لا يوجد مفتاح في هذه النافذة — من قائمة الأجهزة: تدوير المفتاح Rotate key ثم أعد فتح «إعداد الإرسال»)';
-  const iso = new Date().toISOString();
-  const curl = [
-    'curl -sS -X POST "' + (pushUrl || '') + '" \\',
-    '  -H "Content-Type: application/json" \\',
-    '  -H "X-Device-Serial: ' + (serial || '') + '" \\',
-    '  -H "X-Device-Key: ' + keyForCurl + '" \\',
-    "  -d '{\"logs\":[{\"card_number\":\"EMP001\",\"event_type\":\"CHECK_IN\",\"event_time\":\"" + iso + "\"}]}'",
-  ].join('\n');
-
-  return [
-    '══════ ربط جهاز الحضور بالبرنامج (انسخ هذا النص كاملاً) ══════',
-    '',
-    'اسم الجهاز في النظام: ' + (deviceName || '—'),
-    'عنوان الجهاز في نموذج النظام (مرجع فقط، ليس عنوان الخادم): ' + (ipOnForm || '—'),
-    '',
-    'الرقم التسلسلي — Header: X-Device-Serial',
-    serial || '—',
-    '',
-    'مفتاح API — Header: X-Device-Key',
-    keyHuman,
-    '',
-    '▶ عنوان السيرفر في الجهاز (ZKTeco: Communication / ADMS / Server URL — يجب أن يشير إلى حاسبة الـ API):',
-    pushUrl || '(فشل التحميل — عيّن PUBLIC_API_URL في ملف backend/.env ثم أعد فتح النافذة)',
-    '',
-    '▶ نبض اختياري:',
-    heartbeatUrl || '—',
-    '',
-    '▶ أمر اختبار من الطرفية على نفس الحاسبة التي تشغّل الـ API (غيّر EMP001 لرقم موظف عندك):',
-    curl,
-    '',
-    'خطوات: 1) حفظ الإعدادات في الجهاز  2) الأجهزة ← مركز المزامنة ← «اختبار استقبال»  3) «معالجة الحضور» للتاريخ.',
-    '',
-  ].join('\n');
-}
-
 export default function DeviceForm() {
   const { t }    = useTranslation();
   const navigate = useNavigate();
   const { id }   = useParams();
   const isEdit   = !!id;
+  const DEFAULT_DEVICE_IP = '192.168.0.201';
+  const makeFallbackSerial = (ip) => {
+    const clean = String(ip || '').replace(/[^0-9a-zA-Z]/g, '').toUpperCase();
+    return `AUTO-${clean || 'DEVICE'}`;
+  };
 
   const EMPTY = {
     name: '',
-    ip_address: '',
+    ip_address: DEFAULT_DEVICE_IP,
     port: '4370',
     type: 'FINGERPRINT',
     serial_number: '',
@@ -93,29 +51,12 @@ export default function DeviceForm() {
   const [testing,     setTesting]     = useState(false);
   const [testResult,  setTestResult]  = useState(null);
   const [testMessage,  setTestMessage]  = useState('');
+  const [agentJobId,  setAgentJobId]  = useState(null);
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState(null);
-  /** After create, or from edit: show server URLs + optional one-time api_key */
-  const [setupModal, setSetupModal]   = useState(null);
-  const [pushConfig, setPushConfig]   = useState(null);
-  const [copyBundleFlash, setCopyBundleFlash] = useState(false);
   /** On failed ZK probe, holds raw payload for debugging (optional JSON block). */
   const [zkDebug, setZkDebug] = useState(null);
   const saveLockRef = useRef(false);
-
-  useEffect(() => {
-    if (!setupModal?.deviceId) {
-      setPushConfig(null);
-      return;
-    }
-    let cancelled = false;
-    getDevicePushConfig(setupModal.deviceId)
-      .then(({ data: body }) => {
-        if (!cancelled) setPushConfig(body?.data ?? null);
-      })
-      .catch(() => { if (!cancelled) setPushConfig(null); });
-    return () => { cancelled = true; };
-  }, [setupModal?.deviceId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -154,25 +95,6 @@ export default function DeviceForm() {
 
   const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
 
-  const copyFullDeviceBinding = async () => {
-    if (!pushConfig || !setupModal) return;
-    const text = buildDeviceBindingClipboard({
-      deviceName   : setupModal.deviceName,
-      serial       : setupModal.serial_number,
-      pushUrl      : pushConfig.push_url,
-      heartbeatUrl : pushConfig.heartbeat_url,
-      apiKey       : setupModal.api_key,
-      ipOnForm     : form.ip_address,
-    });
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopyBundleFlash(true);
-      window.setTimeout(() => setCopyBundleFlash(false), 3200);
-    } catch {
-      setCopyBundleFlash(false);
-    }
-  };
-
   /** LAN read via zkteco-js (ZK TCP/UDP). HYBRID falls back to HTTP web probe if ZK fails. */
   const handleTest = async () => {
     if (!form.ip_address?.trim()) return;
@@ -180,6 +102,7 @@ export default function DeviceForm() {
     setTestResult(null);
     setTestMessage('');
     setZkDebug(null);
+    setAgentJobId(null);
     const portRaw = form.port?.toString().trim();
     const zkPort = Number.isFinite(Number(portRaw)) && Number(portRaw) > 0 ? Number(portRaw) : 4370;
 
@@ -192,17 +115,25 @@ export default function DeviceForm() {
           quick: true,
         });
         const httpPayload = unwrapZkPayload(httpRes);
-        if (httpPayload?.ok && httpPayload.serial_number) {
+        if (httpPayload?.ok) {
+          // Connection is valid even when some firmwares do not expose serial on HTTP probe.
+          const nextSerial = httpPayload.serial_number
+            || form.serial_number
+            || makeFallbackSerial(form.ip_address);
           setForm((p) => ({
             ...p,
-            serial_number: httpPayload.serial_number,
+            serial_number: nextSerial,
             firmware_version: httpPayload.firmware_version || p.firmware_version,
           }));
           setTestResult('success');
           setTestMessage(
-            vendor === 'FINGERTIC'
-              ? 'تم الاتصال عبر واجهة الويب (Fingertic) بعد فشل أو نقص بيانات بروتوكول ZK.'
-              : 'تمت قراءة الرقم التسلسلي من واجهة الويب للجهاز (HTTP) بعد بروتوكول ZK.',
+            httpPayload.serial_number
+              ? (
+                vendor === 'FINGERTIC'
+                  ? 'تم الاتصال عبر واجهة الويب (Fingertic) بعد فشل أو نقص بيانات بروتوكول ZK.'
+                  : 'تمت قراءة الرقم التسلسلي من واجهة الويب للجهاز (HTTP) بعد بروتوكول ZK.'
+              )
+              : `تم التحقق من الاتصال الحقيقي مع الجهاز (HTTP) والجهاز لم يرسل Serial؛ تم توليد Serial مؤقت (${nextSerial}) ويمكنك تعديله لاحقاً.`,
           );
           return true;
         }
@@ -266,6 +197,97 @@ export default function DeviceForm() {
     }
   };
 
+  /**
+   * Agent-based LAN probe (Polling Agent).
+   * Flow:
+   *  1) POST /api/probe-device → job_id
+   *  2) Poll /api/job-status/:id until success/failed/timeout or local timeout.
+   */
+  const handleAgentProbe = async () => {
+    if (!form.ip_address?.trim()) return;
+    setTesting(true);
+    setTestResult(null);
+    setTestMessage('');
+    setZkDebug(null);
+    setAgentJobId(null);
+
+    try {
+      const timeoutMs = 800;
+      const { data: wrap } = await createProbeJob({
+        agent_id: 'office_1', // TODO: make configurable per company/site if needed
+        device_ip: form.ip_address.trim(),
+        timeout_ms: timeoutMs,
+      });
+      const jobId = wrap?.data?.job_id;
+      if (!jobId) {
+        setTestResult('error');
+        setTestMessage('تعذّر إنشاء مهمة اختبار الاتصال (job_id مفقود من الاستجابة).');
+        return;
+      }
+      setAgentJobId(jobId);
+
+      let attempts = 0;
+      let finalStatus = null;
+      let finalPayload = null;
+
+      while (attempts < 15) {
+        // ~15 ثوانٍ كحد أقصى
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((r) => setTimeout(r, 1000));
+        attempts += 1;
+
+        // eslint-disable-next-line no-await-in-loop
+        const { data: statusWrap } = await getProbeJobStatus(jobId);
+        const sData = statusWrap?.data || {};
+        const status = sData.status;
+        if (status === 'pending' || status === 'in_progress') continue;
+
+        finalStatus = status;
+        finalPayload = sData.result || sData.error || null;
+        break;
+      }
+
+      if (!finalStatus) {
+        setTestResult('error');
+        setTestMessage('انتهت مهلة انتظار نتيجة الـ Agent قبل أن يكتمل الفحص.');
+        return;
+      }
+
+      if (finalStatus === 'success') {
+        setTestResult('success');
+        const serial = finalPayload?.serial_number || form.serial_number || makeFallbackSerial(form.ip_address);
+        setForm((p) => ({
+          ...p,
+          serial_number: serial,
+          firmware_version: p.firmware_version,
+        }));
+        setTestMessage('تم الاتصال بنجاح عبر Agent داخل الشبكة وقراءة الجهاز.');
+        return;
+      }
+
+      if (finalStatus === 'timeout') {
+        setTestResult('error');
+        setTestMessage(
+          finalPayload?.message
+            || 'انتهت مهلة الاتصال بالجهاز من خلال Agent داخل الشبكة. تحقق من IP ومن أن الجهاز على نفس الـ LAN.',
+        );
+        return;
+      }
+
+      setTestResult('error');
+      setTestMessage(
+        finalPayload?.message
+          || 'فشل Agent في الوصول للجهاز داخل الشبكة. تحقق من Power/Network/IP أو إعدادات الـ Agent.',
+      );
+    } catch (err) {
+      setTestResult('error');
+      const apiErr = err.response?.data?.error || err.response?.data?.message;
+      setTestMessage(apiErr || err.message || 'فشل إنشاء أو متابعة مهمة Agent.');
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     if (saveLockRef.current) return;
@@ -291,18 +313,8 @@ export default function DeviceForm() {
         await updateDevice(id, payload);
         navigate('/devices/list');
       } else {
-        const { data: body } = await createDevice(payload);
-        const d = body?.data;
-        if (d?.id && d?.api_key) {
-          setSetupModal({
-            deviceId      : d.id,
-            api_key       : d.api_key,
-            deviceName    : d.name,
-            serial_number : d.serial_number,
-          });
-        } else {
-          navigate('/devices/list');
-        }
+        await createDevice(payload);
+        navigate('/devices/list');
       }
     } catch (err) {
       setError(toErrorString(err.response?.data?.error ?? err.response?.data?.message, 'Save failed'));
@@ -405,6 +417,18 @@ export default function DeviceForm() {
               </span>
               {testing ? 'جاري الاتصال…' : t('device.test_conn')}
             </button>
+            <button
+              type="button"
+              onClick={handleAgentProbe}
+              disabled={!form.ip_address?.trim() || testing}
+              className="btn-ghost gap-2 text-sm flex-shrink-0 border border-emerald-200 text-emerald-900"
+              title="اختبار الاتصال عبر Polling Agent داخل الشبكة (بدون اتصال مباشر من Vercel إلى الجهاز)"
+            >
+              <span className={`material-icons-round text-base ${testing ? 'animate-spin' : ''}`}>
+                {testing ? 'sync' : 'lan'}
+              </span>
+              {testing ? 'جاري الاختبار عبر Agent…' : 'اختبار الاتصال (Agent)'}
+            </button>
           </div>
           <p className="text-[11px] text-amber-800/90 leading-snug">
             الاعتماد الأساسي: مكتبة{' '}
@@ -414,7 +438,7 @@ export default function DeviceForm() {
           {testResult === 'success' && (
             <span className="flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 px-3 py-1.5 rounded-lg">
               <span className="material-icons-round text-sm">check_circle</span>
-              تم الاتصال ببروتوكول ZK وملء الرقم التسلسلي والإصدار من الجهاز
+              تم الاتصال بنجاح مع الجهاز
             </span>
           )}
           {testResult === 'error' && (
@@ -427,22 +451,6 @@ export default function DeviceForm() {
             </span>
           )}
         </div>
-
-        {isEdit && (
-          <button
-            type="button"
-            className="btn-ghost text-sm gap-2 w-full justify-center border border-gray-200"
-            onClick={() => setSetupModal({
-              deviceId: Number(id),
-              api_key: null,
-              deviceName: form.name,
-              serial_number: form.serial_number,
-            })}
-          >
-            <span className="material-icons-round text-base">settings_ethernet</span>
-            عرض عنوان الإرسال للجهاز (ADMS / Push URL)
-          </button>
-        )}
 
         {/* Actions */}
         <div className="flex gap-3 pt-3 border-t border-gray-100">
@@ -457,94 +465,6 @@ export default function DeviceForm() {
         </div>
       </form>
 
-      {setupModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-card-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="font-bold text-gray-800 text-lg">إعداد الجهاز لإرسال الحضور</h3>
-              <button
-                type="button"
-                className="text-gray-400 hover:text-gray-700"
-                onClick={() => {
-                  setSetupModal(null);
-                  setPushConfig(null);
-                  setCopyBundleFlash(false);
-                  if (!isEdit) navigate('/devices/list');
-                }}
-              >
-                <span className="material-icons-round">close</span>
-              </button>
-            </div>
-            {copyBundleFlash && (
-              <p className="text-sm font-semibold text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                تم نسخ نص الإعداد كاملاً — الصقه في ملاحظة أو أرسله لمن يضبط الجهاز.
-              </p>
-            )}
-            {setupModal.api_key && (
-              <div className="rounded-lg bg-violet-50 border border-violet-200 p-3">
-                <p className="text-xs font-bold text-violet-800 uppercase tracking-wide">API Key (انسخه الآن — لن يُعرض مرة أخرى)</p>
-                <code className="mt-1 block text-xs break-all font-mono text-violet-950 select-all">{setupModal.api_key}</code>
-                <button
-                  type="button"
-                  className="mt-2 text-xs font-semibold text-violet-700 underline"
-                  onClick={() => navigator.clipboard?.writeText(setupModal.api_key)}
-                >
-                  نسخ المفتاح
-                </button>
-              </div>
-            )}
-            {!setupModal.api_key && (
-              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                مفتاح API غير متوفر هنا. من قائمة الأجهزة استخدم «تدوير المفتاح» (Rotate key) لإنشاء مفتاح جديد ثم عُد لهذه النافذة.
-              </p>
-            )}
-            <div className="text-sm text-gray-700 space-y-2">
-              <p><strong>الرقم التسلسلي في الهيدر:</strong> <code className="bg-gray-100 px-1 rounded text-xs">{setupModal.serial_number}</code></p>
-              {pushConfig ? (
-                <>
-                  <p><strong>رابط الإرسال (Push):</strong></p>
-                  <code className="block text-xs bg-gray-900 text-green-400 p-3 rounded-lg break-all">{pushConfig.push_url}</code>
-                  <p><strong>نبض (Heartbeat):</strong></p>
-                  <code className="block text-xs bg-gray-100 p-2 rounded break-all">{pushConfig.heartbeat_url}</code>
-                  {pushConfig.note_ar && <p className="text-xs text-gray-600 leading-relaxed border-t pt-2">{pushConfig.note_ar}</p>}
-                  {pushConfig.curl_example && (
-                    <>
-                      <p className="font-semibold mt-2">أمر curl للاختبار من الحاسبة:</p>
-                      <pre className="text-[11px] bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap">{pushConfig.curl_example}</pre>
-                      <p className="text-xs text-gray-500">استبدل النص بين علامات المفتاح في curl بمفتاح API أعلاه، وغيّر EMP001 إلى رقم موظف مسجّل في النظام.</p>
-                    </>
-                  )}
-                </>
-              ) : (
-                <p className="text-gray-500 text-sm">جاري تحميل عناوين الخادم…</p>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t">
-              <button
-                type="button"
-                className="btn-ghost gap-2 text-sm border border-gray-200"
-                disabled={!pushConfig}
-                onClick={copyFullDeviceBinding}
-              >
-                <span className="material-icons-round text-base">content_copy</span>
-                نسخ كل إعدادات الربط (نص واحد + curl)
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => {
-                  setSetupModal(null);
-                  setPushConfig(null);
-                  setCopyBundleFlash(false);
-                  if (!isEdit) navigate('/devices/list');
-                }}
-              >
-                {isEdit ? 'إغلاق' : 'تم — الانتقال لقائمة الأجهزة'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

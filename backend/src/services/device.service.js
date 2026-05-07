@@ -23,7 +23,7 @@ function localAgentBaseUrl() {
 }
 
 function localAgentAuthToken() {
-  return String(process.env.LOCAL_AGENT_TOKEN || '').trim();
+  return String(process.env.LOCAL_AGENT_TOKEN || process.env.AGENT_TOKEN || '').trim();
 }
 
 /** Base URL of [dtr.zkteco.api](https://github.com/itechxcellence/dtr.zkteco.api) on the LAN (or ngrok). When set, ZK reads use HTTP snapshot instead of TCP from this process. */
@@ -641,7 +641,7 @@ async function probeDeviceConnection({ ip_address, port, quick = true }) {
   let agentFailure = null;
   if (agentBase) {
     const controller = new AbortController();
-    const timeoutMs = 1800;
+    const timeoutMs = 2000;
     const t = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const resp = await fetch(`${agentBase}/probe-connection`, {
@@ -1076,6 +1076,54 @@ async function listZkUsersOnDevice(device_id, company_id, query = {}) {
     };
   }
 
+  const agentBase = localAgentBaseUrl();
+  if (agentBase) {
+    const controller = new AbortController();
+    const timeoutMs = 50000;
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(`${agentBase}/execute`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(localAgentAuthToken() ? { authorization: `Bearer ${localAgentAuthToken()}` } : {}),
+        },
+        body: JSON.stringify({
+          action: 'list_users',
+          device_ip: dev.ip_address,
+          port: query.port,
+          socket_timeout_ms: query.socket_timeout_ms,
+          udp_local_port: query.udp_local_port,
+        }),
+        signal: controller.signal,
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (resp.ok && payload && typeof payload === 'object') {
+        if (!payload.ok) {
+          const msg = payload.errors?.[0]?.message || payload.message || 'Local Agent ZK read failed';
+          throw Object.assign(new Error(msg), { statusCode: 502, code: 'ZK_ERROR' });
+        }
+        const includePassword = query.include_password === true;
+        const rawUsers = Array.isArray(payload.users) ? payload.users : [];
+        return {
+          device               : { id: dev.id, name: dev.name, serial_number: dev.serial_number },
+          users                : sanitizeZkUserRows(rawUsers, includePassword),
+          user_count_on_device : payload.user_count_on_device ?? rawUsers.length,
+          attendance_size      : null,
+          info                 : {
+            source: 'local_agent',
+            connection_type: payload.connection_type || null,
+            duration_ms: payload.duration_ms ?? null,
+          },
+        };
+      }
+    } catch (_e) {
+      // Fall back to direct socket call below.
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
   if (dev.status === 'OFFLINE') throw badReq('Cannot read device users: device is offline');
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
@@ -1430,6 +1478,49 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
       errors: [],
       attendance_retry_without_disable: false,
     };
+  } else if (localAgentBaseUrl()) {
+    const agentBase = localAgentBaseUrl();
+    const controller = new AbortController();
+    const timeoutMs = Math.min(120000, Math.max(10000, Number(socket_timeout_ms) + 12000));
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(`${agentBase}/execute`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(localAgentAuthToken() ? { authorization: `Bearer ${localAgentAuthToken()}` } : {}),
+        },
+        body: JSON.stringify({
+          action: 'pull_attendance',
+          device_ip: host,
+          port: port != null && Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+          socket_timeout_ms,
+        }),
+        signal: controller.signal,
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (resp.ok && payload && typeof payload === 'object') {
+        zkPull = {
+          ok: Boolean(payload.ok),
+          connection_type: payload.connection_type || 'local_agent',
+          attendance_size: payload.attendance_size ?? null,
+          records: Array.isArray(payload.records) ? payload.records : [],
+          device_users: Array.isArray(payload.device_users) ? payload.device_users : [],
+          errors: Array.isArray(payload.errors) ? payload.errors : [],
+          attendance_retry_without_disable: Boolean(payload.attendance_retry_without_disable),
+        };
+      } else {
+        throw new Error('Local agent attendance response malformed');
+      }
+    } catch (_e) {
+      zkPull = await zktecoSocket.fetchAttendanceLogs({
+        ip                : host,
+        port              : port != null && Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+        socket_timeout_ms,
+      });
+    } finally {
+      clearTimeout(t);
+    }
   } else {
     zkPull = await zktecoSocket.fetchAttendanceLogs({
       ip                : host,
@@ -1630,6 +1721,67 @@ async function reResolveUnresolvedLogs(company_id) {
   return { total: logs.length, resolved };
 }
 
+/**
+ * Cloud → Local Agent `POST /execute` (action probe). Used by `POST /api/probe-device`.
+ */
+async function probeDeviceViaAgentGateway(body) {
+  const base = localAgentBaseUrl();
+  const token = localAgentAuthToken();
+  const device_ip = String(body?.device_ip || '').trim();
+  const timeout_ms = Math.min(1000, Math.max(200, Number(body?.timeout_ms) || 800));
+
+  if (!device_ip) {
+    const err = new Error('device_ip is required');
+    err.statusCode = 422;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+  if (!base || !token) {
+    const err = new Error('LOCAL_AGENT_URL and LOCAL_AGENT_TOKEN (or AGENT_TOKEN) must be set');
+    err.statusCode = 503;
+    err.code = 'LOCAL_AGENT_NOT_CONFIGURED';
+    throw err;
+  }
+
+  const controller = new AbortController();
+  const cloudBudgetMs = 2500;
+  const t = setTimeout(() => controller.abort(), cloudBudgetMs);
+  try {
+    const resp = await fetch(`${base}/execute`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        action: 'probe',
+        device_ip,
+        timeout_ms,
+      }),
+      signal: controller.signal,
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const err = new Error(payload?.error || `Local agent HTTP ${resp.status}`);
+      err.statusCode = 502;
+      err.code = 'LOCAL_AGENT_ERROR';
+      throw err;
+    }
+    return payload;
+  } catch (e) {
+    const isAbort = e && (e.name === 'AbortError' || /aborted|abort/i.test(String(e.message || '')));
+    if (isAbort) {
+      const err = new Error('Local agent request timeout');
+      err.statusCode = 504;
+      err.code = 'LOCAL_AGENT_TIMEOUT';
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // ── Export ───────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -1642,6 +1794,7 @@ module.exports = {
   syncDeviceUsers,
   listEmployeesForDevicePicker,
   probeDeviceConnection,
+  probeDeviceViaAgentGateway,
   probeZkSocket,
   debugZkConnection,
   readZkFromRegisteredDevice,

@@ -30,6 +30,22 @@ export const deleteDevice   = (id)     => api.delete(`/devices/${id}`);
 export const rotateKey      = (id)     => api.post(`/devices/${id}/rotate-key`);
 export const syncDeviceUsers= (id, employee_ids) => api.post(`/devices/${id}/sync-users`, { employee_ids });
 
+// ── Agent-based LAN probe (Polling Agent Queue) ────────────────────────────────
+
+/**
+ * Create a probe job via Polling Agent queue.
+ * Body: { agent_id, device_ip, timeout_ms? }
+ * Returns: { job_id, status, agent_id }
+ */
+export const createProbeJob = (body) => api.post('/probe-device', body);
+
+/**
+ * Get status of a probe job.
+ * Returns: { job_id, status, result?, error? }
+ */
+export const getProbeJobStatus = (jobId) => api.get(`/job-status/${jobId}`);
+
+
 // ── Raw Logs ──────────────────────────────────────────────────────────────────
 export const listLogs       = (params) => api.get('/devices/logs', { params });
 export const getLog         = (id)     => api.get(`/devices/logs/${id}`);

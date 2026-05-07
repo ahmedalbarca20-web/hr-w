@@ -16,9 +16,10 @@ const resolveSubscribeCompanyId = (req) => {
 exports.getWebPushPublicKey = asyncHandler(async (_req, res) => {
   const key = pushSvc.getVapidPublicKey();
   if (!key) {
-    return sendError(res, 'Web push is not configured on server', 503, 'SERVICE_UNAVAILABLE');
+    // Non-fatal for app boot: return 200 with a disabled flag when push is not configured.
+    return sendSuccess(res, { publicKey: null, configured: false }, 'Web push is not configured');
   }
-  return sendSuccess(res, { publicKey: key });
+  return sendSuccess(res, { publicKey: key, configured: true });
 });
 
 exports.subscribeWebPush = asyncHandler(async (req, res) => {
