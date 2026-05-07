@@ -5,10 +5,9 @@ import {
   getDevice,
   createDevice,
   updateDevice,
+  probeDeviceViaAgent,
   probeDeviceConnection,
   probeZkSocket,
-  createProbeJob,
-  getProbeJobStatus,
 } from '../../api/device.api';
 import { listDepartments } from '../../api/department.api';
 import { applyZkSnapshotToForm, extractZkSerialFromSnapshot, unwrapZkPayload, zkFailureMessage } from '../../lib/deviceZk';
@@ -51,7 +50,6 @@ export default function DeviceForm() {
   const [testing,     setTesting]     = useState(false);
   const [testResult,  setTestResult]  = useState(null);
   const [testMessage,  setTestMessage]  = useState('');
-  const [agentJobId,  setAgentJobId]  = useState(null);
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState(null);
   /** On failed ZK probe, holds raw payload for debugging (optional JSON block). */
@@ -95,18 +93,39 @@ export default function DeviceForm() {
 
   const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
 
-  /** LAN read via zkteco-js (ZK TCP/UDP). HYBRID falls back to HTTP web probe if ZK fails. */
+  /** LAN probe via backend relay/local agent, then zkteco-js and HTTP fallback if needed. */
   const handleTest = async () => {
     if (!form.ip_address?.trim()) return;
     setTesting(true);
     setTestResult(null);
     setTestMessage('');
     setZkDebug(null);
-    setAgentJobId(null);
     const portRaw = form.port?.toString().trim();
     const zkPort = Number.isFinite(Number(portRaw)) && Number(portRaw) > 0 ? Number(portRaw) : 4370;
 
     try {
+      const tryAgentProbe = async () => {
+        const agentRes = await probeDeviceViaAgent({
+          device_ip: form.ip_address.trim(),
+          timeout_ms: 1200,
+        });
+        const agentPayload = unwrapZkPayload(agentRes);
+        if (agentPayload?.ok) {
+          const nextSerial = agentPayload.serial_number
+            || form.serial_number
+            || makeFallbackSerial(form.ip_address);
+          setForm((p) => ({
+            ...p,
+            serial_number: nextSerial,
+            firmware_version: agentPayload.firmware_version || p.firmware_version,
+          }));
+          setTestResult('success');
+          setTestMessage('تم فحص الاتصال عبر Local Agent داخل الشبكة المحلية.');
+          return true;
+        }
+        return false;
+      };
+
       const tryHttpSerial = async (vendor) => {
         const httpRes = await probeDeviceConnection({
           ip_address: form.ip_address.trim(),
@@ -140,6 +159,8 @@ export default function DeviceForm() {
         return false;
       };
 
+      if (await tryAgentProbe()) return;
+
       const zkRes = await probeZkSocket({
         ip_address: form.ip_address.trim(),
         port: zkPort,
@@ -163,7 +184,7 @@ export default function DeviceForm() {
         setTestMessage(
           hintSn
             ? 'تعذّر تعبئة الرقم التسلسلي تلقائياً رغم وصول بيانات من الجهاز. انسخ الرقم يدوياً إلى الحقل.'
-            : 'اتصل بالجهاز (ZK) لكن لم يُرجع رقمًا تسلسليًا معروفًا. جرّب واجهة الويب (تم تجربة HTTP تلقائياً) أو أدخل الرقم من ملصق الجهاز.',
+            : 'اتصل بالجهاز (ZK) لكن لم يُرجع رقمًا تسلسليًا معروفًا. تم أيضًا تجربة فحص Local Agent وواجهة الويب تلقائياً. جرّب إدخال الرقم من ملصق الجهاز إن لزم.',
         );
         setZkDebug(z);
         return;
@@ -191,98 +212,7 @@ export default function DeviceForm() {
         apiErr =
           'تعذّر الاتصال بخادم الـ API (غالباً المنفذ 5000). شغّل من جذر المشروع: npm run dev:all — أو تأكد أن الواجهة والـ API على نفس الجهاز إذا فتحت الرابط من شبكة محلية.';
       }
-      setTestMessage(apiErr || err.message || 'فشل اختبار الاتصال');
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  /**
-   * Agent-based LAN probe (Polling Agent).
-   * Flow:
-   *  1) POST /api/probe-device → job_id
-   *  2) Poll /api/job-status/:id until success/failed/timeout or local timeout.
-   */
-  const handleAgentProbe = async () => {
-    if (!form.ip_address?.trim()) return;
-    setTesting(true);
-    setTestResult(null);
-    setTestMessage('');
-    setZkDebug(null);
-    setAgentJobId(null);
-
-    try {
-      const timeoutMs = 800;
-      const { data: wrap } = await createProbeJob({
-        agent_id: 'office_1', // TODO: make configurable per company/site if needed
-        device_ip: form.ip_address.trim(),
-        timeout_ms: timeoutMs,
-      });
-      const jobId = wrap?.data?.job_id;
-      if (!jobId) {
-        setTestResult('error');
-        setTestMessage('تعذّر إنشاء مهمة اختبار الاتصال (job_id مفقود من الاستجابة).');
-        return;
-      }
-      setAgentJobId(jobId);
-
-      let attempts = 0;
-      let finalStatus = null;
-      let finalPayload = null;
-
-      while (attempts < 15) {
-        // ~15 ثوانٍ كحد أقصى
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise((r) => setTimeout(r, 1000));
-        attempts += 1;
-
-        // eslint-disable-next-line no-await-in-loop
-        const { data: statusWrap } = await getProbeJobStatus(jobId);
-        const sData = statusWrap?.data || {};
-        const status = sData.status;
-        if (status === 'pending' || status === 'in_progress') continue;
-
-        finalStatus = status;
-        finalPayload = sData.result || sData.error || null;
-        break;
-      }
-
-      if (!finalStatus) {
-        setTestResult('error');
-        setTestMessage('انتهت مهلة انتظار نتيجة الـ Agent قبل أن يكتمل الفحص.');
-        return;
-      }
-
-      if (finalStatus === 'success') {
-        setTestResult('success');
-        const serial = finalPayload?.serial_number || form.serial_number || makeFallbackSerial(form.ip_address);
-        setForm((p) => ({
-          ...p,
-          serial_number: serial,
-          firmware_version: p.firmware_version,
-        }));
-        setTestMessage('تم الاتصال بنجاح عبر Agent داخل الشبكة وقراءة الجهاز.');
-        return;
-      }
-
-      if (finalStatus === 'timeout') {
-        setTestResult('error');
-        setTestMessage(
-          finalPayload?.message
-            || 'انتهت مهلة الاتصال بالجهاز من خلال Agent داخل الشبكة. تحقق من IP ومن أن الجهاز على نفس الـ LAN.',
-        );
-        return;
-      }
-
-      setTestResult('error');
-      setTestMessage(
-        finalPayload?.message
-          || 'فشل Agent في الوصول للجهاز داخل الشبكة. تحقق من Power/Network/IP أو إعدادات الـ Agent.',
-      );
-    } catch (err) {
-      setTestResult('error');
-      const apiErr = err.response?.data?.error || err.response?.data?.message;
-      setTestMessage(apiErr || err.message || 'فشل إنشاء أو متابعة مهمة Agent.');
+      setTestMessage(apiErr || err.message || 'فشل اختبار الشبكة المحلية أو الاتصال بالجهاز');
     } finally {
       setTesting(false);
     }
@@ -410,35 +340,23 @@ export default function DeviceForm() {
               onClick={handleTest}
               disabled={!form.ip_address?.trim() || testing}
               className="btn-ghost gap-2 text-sm flex-shrink-0 border border-violet-200 text-violet-900"
-              title="zkteco-js — بروتوكول ZK على المنفذ الحالي في النموذج"
+              title="اختبار الاتصال عبر Local Agent أو ZK/HTTP fallback بحسب إعدادات الشبكة"
             >
               <span className={`material-icons-round text-base ${testing ? 'animate-spin' : ''}`}>
                 {testing ? 'sync' : 'fingerprint'}
               </span>
-              {testing ? 'جاري الاتصال…' : t('device.test_conn')}
-            </button>
-            <button
-              type="button"
-              onClick={handleAgentProbe}
-              disabled={!form.ip_address?.trim() || testing}
-              className="btn-ghost gap-2 text-sm flex-shrink-0 border border-emerald-200 text-emerald-900"
-              title="اختبار الاتصال عبر Polling Agent داخل الشبكة (بدون اتصال مباشر من Vercel إلى الجهاز)"
-            >
-              <span className={`material-icons-round text-base ${testing ? 'animate-spin' : ''}`}>
-                {testing ? 'sync' : 'lan'}
-              </span>
-              {testing ? 'جاري الاختبار عبر Agent…' : 'اختبار الاتصال (Agent)'}
+              {testing ? 'جاري فحص الشبكة المحلية…' : 'فحص الاتصال المحلي'}
             </button>
           </div>
           <p className="text-[11px] text-amber-800/90 leading-snug">
-            الاعتماد الأساسي: مكتبة{' '}
+            الفحص يمر عبر الـ backend. إذا كان الجهاز داخل شبكة خاصة، استخدم Local Agent أو bridge على جهاز موجود بنفس LAN. الاعتماد الأساسي يبقى على مكتبة{' '}
             <a href="https://coding-libs.github.io/zkteco-js/" className="underline font-medium" target="_blank" rel="noreferrer">zkteco-js</a>
-            {' '}(تجريبية — غير موصى بها للإنتاج حسب المؤلفين). نوع «HYBRID»: إن فشل ZK يُجرى اختبار واجهة الويب (Fingertic).
+            {' '}(تجريبية — غير موصى بها للإنتاج حسب المؤلفين)، ثم fallback إلى فحص الويب عند الحاجة.
           </p>
           {testResult === 'success' && (
             <span className="flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 px-3 py-1.5 rounded-lg">
               <span className="material-icons-round text-sm">check_circle</span>
-              تم الاتصال بنجاح مع الجهاز
+              تم الاتصال ببروتوكول ZK وملء الرقم التسلسلي والإصدار من الجهاز
             </span>
           )}
           {testResult === 'error' && (
