@@ -8,6 +8,8 @@ export const getDevice      = (id)     => api.get(`/devices/${id}`);
 export const createDevice   = (data)   => api.post('/devices', data);
 /** Legacy HTTP probe (web panel). Prefer `probeZkSocket` for ZKTeco; kept for HYBRID / Fingertic fallback. */
 export const probeDeviceConnection = (data) => api.post('/devices/probe-connection', data);
+/** Local-network relay probe via backend + local agent. Preferred for private LAN device checks. */
+export const probeDeviceViaAgent = (data) => api.post('/probe-device', data);
 /** ZK binary protocol (zkteco-js) — TCP/UDP; optional fields: socket_timeout_ms, udp_local_port, include_users, max_users */
 export const probeZkSocket = (data) => api.post('/devices/probe-zk-socket', data);
 /** Combined diagnostics: ZK path + HTTP probe + runtime env hints. */
@@ -29,22 +31,6 @@ export const updateDevice   = (id, d)  => api.put(`/devices/${id}`, d);
 export const deleteDevice   = (id)     => api.delete(`/devices/${id}`);
 export const rotateKey      = (id)     => api.post(`/devices/${id}/rotate-key`);
 export const syncDeviceUsers= (id, employee_ids) => api.post(`/devices/${id}/sync-users`, { employee_ids });
-
-// ── Agent-based LAN probe (Polling Agent Queue) ────────────────────────────────
-
-/**
- * Create a probe job via Polling Agent queue.
- * Body: { agent_id, device_ip, timeout_ms? }
- * Returns: { job_id, status, agent_id }
- */
-export const createProbeJob = (body) => api.post('/probe-device', body);
-
-/**
- * Get status of a probe job.
- * Returns: { job_id, status, result?, error? }
- */
-export const getProbeJobStatus = (jobId) => api.get(`/job-status/${jobId}`);
-
 
 // ── Raw Logs ──────────────────────────────────────────────────────────────────
 export const listLogs       = (params) => api.get('/devices/logs', { params });
