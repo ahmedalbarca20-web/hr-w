@@ -8,6 +8,20 @@ export const getDevice      = (id)     => api.get(`/devices/${id}`);
 export const createDevice   = (data)   => api.post('/devices', data);
 /** Legacy HTTP probe (web panel). Prefer `probeZkSocket` for ZKTeco; kept for HYBRID / Fingertic fallback. */
 export const probeDeviceConnection = (data) => api.post('/devices/probe-connection', data);
+/** Local-network relay probe via backend + local agent. Preferred for private LAN device checks. */
+export const probeDeviceViaAgent = (data) => api.post('/probe-device', data);
+/** Try calling the local agent directly from the browser (localhost). Returns { status, data } or throws. */
+export const probeLocalAgent = async (data) => {
+	const url = 'http://127.0.0.1:8099/execute';
+	const body = { action: 'probe', device_ip: data.device_ip || data.ip_address || data.ip, port: data.port, timeout_ms: data.timeout_ms };
+	const resp = await fetch(url, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	});
+	const json = await resp.json().catch(() => null);
+	return { status: resp.status, data: json };
+};
 /** ZK binary protocol (zkteco-js) — TCP/UDP; optional fields: socket_timeout_ms, udp_local_port, include_users, max_users */
 export const probeZkSocket = (data) => api.post('/devices/probe-zk-socket', data);
 /** Combined diagnostics: ZK path + HTTP probe + runtime env hints. */

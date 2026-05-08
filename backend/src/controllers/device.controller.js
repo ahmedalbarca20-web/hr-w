@@ -396,8 +396,14 @@ const reResolveLogs = asyncHandler(async (req, res) => {
   sendSuccess(res, data, `تمت معالجة ${data.total} سجل، وتم ربط ${data.resolved} موظف جديد بنجاح.`);
 });
 
+/** Thin gateway: cloud → LOCAL_AGENT_URL/execute (probe). See POST /api/probe-device. */
+const probeDeviceGateway = asyncHandler(async (req, res) => {
+  const data = await svc.probeDeviceViaAgentGateway(req.body || {});
+  sendSuccess(res, data);
+});
+
 module.exports = {
-  listDevices, getDevice, listEmployeeOptions, probeConnection, probeZkSocket, debugZkConnection, readZkFromDevice, listZkDeviceUsers, importZkUsersToEmployees, setZkDeviceUserPrivilege, unlockDeviceZkSession, importZkAttendances, createDevice, updateDevice, deactivateDevice, rotateApiKey,
+  listDevices, getDevice, listEmployeeOptions, probeConnection, probeDeviceGateway, probeZkSocket, debugZkConnection, readZkFromDevice, listZkDeviceUsers, importZkUsersToEmployees, setZkDeviceUserPrivilege, unlockDeviceZkSession, importZkAttendances, createDevice, updateDevice, deactivateDevice, rotateApiKey,
   getPushConfig, testDeviceIngest,
   push, heartbeat,
   listLogs, getLog, reprocessLog, reResolveLogs,

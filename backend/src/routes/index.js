@@ -16,6 +16,7 @@ const reportRoutes        = require('./report.routes');
 const notificationRoutes  = require('./notification.routes');
 
 const { authenticate }  = require('../middleware/auth.middleware');
+const { requireRole, requireFeature } = require('../middleware/role.middleware');
 const { authenticateDevice } = require('../middleware/device.middleware');
 const deviceController  = require('../controllers/device.controller');
 const { sendSuccess }   = require('../utils/response');
@@ -29,6 +30,15 @@ const router = Router();
 
 // Health check (no auth required)
 router.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
+
+/** LAN device probe via Local Agent (JWT + devices feature). Body: { device_ip, timeout_ms? } */
+router.post(
+  '/probe-device',
+  authenticate,
+  requireFeature('devices'),
+  requireRole('ADMIN', 'HR'),
+  deviceController.probeDeviceGateway,
+);
 
 /** ZKTeco iClock / ADMS default path — same handler as POST /devices/push (SN + key in query or body). */
 router.post('/iclock/cdata', authenticateDevice, deviceController.push);
@@ -52,7 +62,7 @@ router.get('/dashboard/summary', authenticate, async (req, res) => {
            FROM payroll_items pi
            JOIN payroll_runs pr ON pr.id=pi.payroll_run_id
           WHERE pr.company_id=:cid AND pr.run_month=:month AND pr.run_year=:year
-            AND pr.status IN ('PROCESSED','APPROVED','PAID'))  AS month_payroll
+            AND pr.status IN ('PROCESSING','APPROVED','PAID'))  AS month_payroll
     `, { replacements: { cid: companyId, today, month, year }, type: QueryTypes.SELECT });
 
     const dept = await sequelize.query(`

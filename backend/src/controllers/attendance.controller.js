@@ -105,4 +105,3 @@ exports.activeSurpriseAttendance = asyncHandler(async (req, res) => {
   const active = await surpriseSvc.getActive(companyId);
   sendSuccess(res, active);
 });
-

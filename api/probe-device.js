@@ -1,5 +1,11 @@
 'use strict';
 
+/**
+ * Standalone helper (axios). On Vercel this project routes /api/* to Express — use:
+ *   POST /api/probe-device (JWT) → device.controller.probeDeviceGateway
+ * Keep this file for copy/paste or a custom functions map if you split routes later.
+ */
+
 const axios = require('axios');
 
 module.exports = async (req, res) => {

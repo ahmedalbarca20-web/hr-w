@@ -6,6 +6,7 @@ export const getMyEmployee   = ()              => api.get('/employees/me');
 export const getEmployee     = (id, params)    => api.get(`/employees/${id}`, { params });
 export const createEmployee  = (data)          => api.post('/employees', data);
 export const updateEmployee  = (id, data)      => api.put(`/employees/${id}`, data);
+export const patchEmployee   = (id, data)      => api.patch(`/employees/${id}`, data);
 export const deleteEmployee  = (id, params)    => api.delete(`/employees/${id}`, { params });
 export const setStatus       = (id, data) => api.patch(`/employees/${id}/status`, data);
 
