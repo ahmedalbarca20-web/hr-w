@@ -1,27 +1,36 @@
 import api from './axios';
 
-// ── Devices ──────────────────────────────────────────────────────────────────
-export const listDevices    = (params) => api.get('/devices', { params });
-/** Active employees for device sync UI (works without `employees` company feature). */
-export const listDeviceEmployeeOptions = (params) => api.get('/devices/employee-options', { params });
-export const getDevice      = (id)     => api.get(`/devices/${id}`);
-export const createDevice   = (data)   => api.post('/devices', data);
-/** Legacy HTTP probe (web panel). Prefer `probeZkSocket` for ZKTeco; kept for HYBRID / Fingertic fallback. */
-export const probeDeviceConnection = (data) => api.post('/devices/probe-connection', data);
-/** Local-network relay probe via backend + local agent. Preferred for private LAN device checks. */
-export const probeDeviceViaAgent = (data) => api.post('/probe-device', data);
-/** Try calling the local agent directly from the browser (localhost). Returns { status, data } or throws. */
-export const probeLocalAgent = async (data) => {
-	const url = 'http://127.0.0.1:8099/execute';
-	const body = { action: 'probe', device_ip: data.device_ip || data.ip_address || data.ip, port: data.port, timeout_ms: data.timeout_ms };
-	const resp = await fetch(url, {
+const LOCAL_AGENT_URL = 'http://127.0.0.1:8099/execute';
+
+async function callLocalAgent(action, data = {}) {
+	const body = {
+		action,
+		device_ip: data.device_ip || data.ip_address || data.ip,
+		port: data.port,
+		timeout_ms: data.timeout_ms,
+		include_password: data.include_password,
+	};
+	const resp = await fetch(LOCAL_AGENT_URL, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(body),
 	});
 	const json = await resp.json().catch(() => null);
 	return { status: resp.status, data: json };
-};
+}
+
+// ── Devices ──────────────────────────────────────────────────────────────────
+export const listDevices = (params) => api.get('/devices', { params });
+/** Active employees for device sync UI (works without `employees` company feature). */
+export const listDeviceEmployeeOptions = (params) => api.get('/devices/employee-options', { params });
+export const getDevice = (id) => api.get(`/devices/${id}`);
+export const createDevice = (data) => api.post('/devices', data);
+/** Legacy HTTP probe (web panel). Prefer `probeZkSocket` for ZKTeco; kept for HYBRID / Fingertic fallback. */
+export const probeDeviceConnection = (data) => api.post('/devices/probe-connection', data);
+/** Local-network relay probe via backend + local agent. Preferred for private LAN device checks. */
+export const probeDeviceViaAgent = (data) => api.post('/probe-device', data);
+/** Try calling the local agent directly from the browser (localhost). Returns { status, data } or throws. */
+export const probeLocalAgent = (data) => callLocalAgent('probe', data);
 /** ZK binary protocol (zkteco-js) — TCP/UDP; optional fields: socket_timeout_ms, udp_local_port, include_users, max_users */
 export const probeZkSocket = (data) => api.post('/devices/probe-zk-socket', data);
 /** Combined diagnostics: ZK path + HTTP probe + runtime env hints. */
@@ -37,15 +46,19 @@ export const setZkDeviceUserPrivilege = (id, body) => api.post(`/devices/${id}/z
 export const unlockZkDevice = (id, body) => api.post(`/devices/${id}/zk-unlock`, body || {});
 /** Pull attendance from ZK device into raw logs; body: { port?, date_from?, date_to?, max_records?, auto_process?, socket_timeout_ms? } */
 export const importDeviceZkAttendance = (id, body) => api.post(`/devices/${id}/zk-import-attendance`, body || {});
-export const getDevicePushConfig   = (id)     => api.get(`/devices/${id}/push-config`);
-export const testDeviceIngest      = (id, body) => api.post(`/devices/${id}/test-ingest`, body || {});
-export const updateDevice   = (id, d)  => api.put(`/devices/${id}`, d);
-export const deleteDevice   = (id)     => api.delete(`/devices/${id}`);
-export const rotateKey      = (id)     => api.post(`/devices/${id}/rotate-key`);
-export const syncDeviceUsers= (id, employee_ids) => api.post(`/devices/${id}/sync-users`, { employee_ids });
+export const importDeviceZkAttendanceDirect = (id, body) => api.post(`/devices/${id}/zk-import-attendance-direct`, body || {});
+export const importDeviceZkUsersDirect = (id, body) => api.post(`/devices/${id}/zk-import-users-direct`, body || {});
+export const pullAttendanceLocalAgent = (data) => callLocalAgent('pull_attendance', data);
+export const listUsersLocalAgent = (data) => callLocalAgent('list_users', data);
+export const getDevicePushConfig = (id) => api.get(`/devices/${id}/push-config`);
+export const testDeviceIngest = (id, body) => api.post(`/devices/${id}/test-ingest`, body || {});
+export const updateDevice = (id, d) => api.put(`/devices/${id}`, d);
+export const deleteDevice = (id) => api.delete(`/devices/${id}`);
+export const rotateKey = (id) => api.post(`/devices/${id}/rotate-key`);
+export const syncDeviceUsers = (id, employee_ids) => api.post(`/devices/${id}/sync-users`, { employee_ids });
 
 // ── Raw Logs ──────────────────────────────────────────────────────────────────
-export const listLogs       = (params) => api.get('/devices/logs', { params });
-export const getLog         = (id)     => api.get(`/devices/logs/${id}`);
-export const reprocessLog   = (id)     => api.patch(`/devices/logs/${id}/reprocess`);
-export const reResolveLogs   = ()       => api.post('/devices/logs/re-resolve-unresolved');
+export const listLogs = (params) => api.get('/devices/logs', { params });
+export const getLog = (id) => api.get(`/devices/logs/${id}`);
+export const reprocessLog = (id) => api.patch(`/devices/logs/${id}/reprocess`);
+export const reResolveLogs = () => api.post('/devices/logs/re-resolve-unresolved');

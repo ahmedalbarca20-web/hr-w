@@ -72,6 +72,8 @@ r.post  ('/:id/zk-import-users', requireRole(...HR_ADMIN), requireFeature('emplo
 r.post  ('/:id/zk-set-user-privilege', requireRole(...HR_ADMIN), ctrl.setZkDeviceUserPrivilege);
 r.post  ('/:id/zk-unlock', requireRole(...HR_ADMIN), ctrl.unlockDeviceZkSession);
 r.post  ('/:id/zk-import-attendance', requireRole(...HR_ADMIN), ctrl.importZkAttendances);
+r.post  ('/:id/zk-import-attendance-direct', requireRole(...HR_ADMIN), ctrl.importZkAttendancesDirect);
+r.post  ('/:id/zk-import-users-direct', requireRole(...HR_ADMIN), requireFeature('employees'), ctrl.importZkUsersToEmployeesDirect);
 r.get   ('/:id/push-config', requireRole(...HR_ADMIN), ctrl.getPushConfig);
 r.post  ('/:id/test-ingest', requireRole(...HR_ADMIN), ctrl.testDeviceIngest);
 r.get   ('/:id',        requireRole(...HR_ADMIN), ctrl.getDevice);

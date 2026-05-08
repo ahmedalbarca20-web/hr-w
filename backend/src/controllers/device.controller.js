@@ -402,7 +402,25 @@ const probeDeviceGateway = asyncHandler(async (req, res) => {
   sendSuccess(res, data);
 });
 
+
+const importZkUsersToEmployeesDirect = asyncHandler(async (req, res) => {
+  const id = parseId(req, res); if (id === null) return;
+  const company_id = resolveCompanyId(req);
+  const data = await require('../services/device-proxy.service').importZkUsersToEmployeesDirect(id, company_id, req.body);
+  sendSuccess(res, data, 'تم استيراد المستخدمين بنجاح عبر الوكيل');
+});
+
+
+const importZkAttendancesDirect = asyncHandler(async (req, res) => {
+  const id = parseId(req, res); if (id === null) return;
+  const company_id = resolveCompanyId(req);
+  const data = await require('../services/device-proxy.service').importZkAttendancesDirectToDeviceLogs(id, company_id, req.body);
+  sendSuccess(res, data, 'تم سحب سجلات البصمة من الوكيل المحلي بنجاح');
+});
+
 module.exports = {
+  importZkUsersToEmployeesDirect,
+  importZkAttendancesDirect,
   listDevices, getDevice, listEmployeeOptions, probeConnection, probeDeviceGateway, probeZkSocket, debugZkConnection, readZkFromDevice, listZkDeviceUsers, importZkUsersToEmployees, setZkDeviceUserPrivilege, unlockDeviceZkSession, importZkAttendances, createDevice, updateDevice, deactivateDevice, rotateApiKey,
   getPushConfig, testDeviceIngest,
   push, heartbeat,

@@ -7,6 +7,10 @@ import {
   getDeviceZkUsers,
   importDeviceZkUsers,
   importDeviceZkAttendance,
+  importDeviceZkAttendanceDirect,
+  importDeviceZkUsersDirect,
+  pullAttendanceLocalAgent,
+  listUsersLocalAgent,
   readZkFromDevice,
   reResolveLogs,
   setZkDeviceUserPrivilege,
@@ -102,9 +106,33 @@ export default function SyncCenter() {
     setDeviceZkUsers([]);
     let rows = [];
     try {
-      const { data } = await getDeviceZkUsers(deviceId, { include_password: withDevicePassword });
-      const inner = data?.data;
-      rows = Array.isArray(inner?.users) ? inner.users : [];
+      const dev = devices.find((d) => d.id === deviceId);
+
+      let agentData = null;
+      if (dev?.ip_address) {
+        try {
+          const agentStatus = await listUsersLocalAgent({
+            ip_address: dev.ip_address,
+            port: dev.port || 4370,
+            include_password: withDevicePassword,
+            timeout_ms: 120000,
+          });
+          if (agentStatus.status === 200 && agentStatus.data?.ok) {
+            agentData = agentStatus.data;
+          }
+        } catch (_err) {
+          agentData = null;
+        }
+      }
+
+      if (agentData) {
+        rows = Array.isArray(agentData.users) ? agentData.users : [];
+      } else {
+        const { data } = await getDeviceZkUsers(deviceId, { include_password: withDevicePassword });
+        const inner = data?.data;
+        rows = Array.isArray(inner?.users) ? inner.users : [];
+      }
+
       setDeviceZkUsers(rows);
     } catch (e) {
       setDeviceZkUsers([]);
@@ -113,7 +141,7 @@ export default function SyncCenter() {
       setDeviceUsersLoading(false);
     }
     return rows;
-  }, []);
+  }, [devices]);
 
   const zkNameDupCounts = useMemo(() => {
     const m = new Map();
@@ -339,26 +367,64 @@ export default function SyncCenter() {
     setAttPullLoading(devId);
     setSyncMsg('');
     try {
-      const { data: wrap } = await importDeviceZkAttendance(devId, {
-        date_from: procDate,
-        date_to: procDateTo,
-        auto_process: attPullAutoProcess,
-        overwrite_attendance: attOverwriteManual,
-        max_records: 12000,
-        socket_timeout_ms: 120000,
-      });
-      const inner = wrap?.data;
-      const ing = inner?.ingest;
-      const zk = inner?.zk;
+      const dev = devices.find((d) => d.id === devId);
+
+      let agentPayload = null;
+      if (dev?.ip_address) {
+        try {
+          const agentStatus = await pullAttendanceLocalAgent({
+            ip_address: dev.ip_address,
+            port: dev.port || 4370,
+            timeout_ms: 120000,
+          });
+          if (agentStatus.status === 200 && agentStatus.data?.ok) {
+            agentPayload = agentStatus.data;
+          }
+        } catch (_err) {
+          agentPayload = null;
+        }
+      }
+
+      let wrap = null;
+      if (agentPayload) {
+        const { data } = await importDeviceZkAttendanceDirect(devId, {
+          options: {
+            date_from: procDate,
+            date_to: procDateTo,
+            auto_process: attPullAutoProcess,
+            overwrite_attendance: attOverwriteManual,
+            max_records: 12000,
+          },
+          records: agentPayload.records,
+          device_users: agentPayload.device_users,
+          attendance_size: agentPayload.attendance_size,
+          errors: agentPayload.errors,
+          attendance_retry_without_disable: agentPayload.attendance_retry_without_disable,
+        });
+        wrap = data;
+      } else {
+        const { data } = await importDeviceZkAttendance(devId, {
+          date_from: procDate,
+          date_to: procDateTo,
+          auto_process: attPullAutoProcess,
+          overwrite_attendance: attOverwriteManual,
+          max_records: 12000,
+          socket_timeout_ms: 120000,
+        });
+        wrap = data;
+      }
+
+      const inner = wrap?.data || wrap;
+      const ing = inner?.ingest || inner?.ingest_summary;
+      const zk = inner?.zk || inner;
       const parts = [
-        `سجلات على الجهاز: ${zk?.record_count ?? '—'}`,
+        `سجلات على الجهاز: ${zk?.record_count ?? inner?.records_pulled_raw ?? '—'}`,
         `أُدخلت للمعالجة: ${ing?.total ?? 0}`,
         `مقبول جديد: ${ing?.accepted ?? 0}`,
         `مكرر: ${ing?.duplicates ?? 0}`,
         `بدون مطابقة موظف: ${ing?.unresolved ?? 0}`,
       ];
-      if (zk?.capped_to) parts.push(`(حد أقصى ${zk.capped_to} سجل لكل عملية)`);
-      const diag = zk?.pull_diagnostics;
+      const diag = inner?.pull_diagnostics || zk?.pull_diagnostics;
       if (diag && ((ing?.total ?? 0) === 0 || (diag.rejected_by_date ?? 0) > 0)) {
         const samples = (diag.sample_dates_outside_range || []).slice(0, 4).join('، ');
         parts.push(
