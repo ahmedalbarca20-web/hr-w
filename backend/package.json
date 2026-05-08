@@ -14,7 +14,9 @@
     "seed:demo": "node database/seed.demo-employees.js",
     "init:sqlite": "node database/init-sqlite.js",
     "bridge:zk-lan": "node zk-lan-bridge/server.js",
-    "device:set-ip": "node scripts/set-device-lan-ip.js"
+    "device:set-ip": "node scripts/set-device-lan-ip.js",
+    "verify:iconv": "node scripts/verify-iconv-lite.js",
+    "postinstall": "node scripts/verify-iconv-lite.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -24,7 +26,7 @@
     "express": "^5.0.1",
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.0.0",
-    "iconv-lite": "^0.7.2",
+    "iconv-lite": "0.7.2",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^2.1.0",
