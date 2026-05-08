@@ -307,6 +307,108 @@ app.post('/execute', auth, async (req, res) => {
     });
   }
 
+  if (action === 'unlock_device') {
+    const zk = getZktecoSocket();
+    const socketTimeoutMs = Number.isFinite(Number(req.body?.socket_timeout_ms))
+      ? Math.min(120000, Math.max(8000, Number(req.body.socket_timeout_ms)))
+      : 50000;
+    const started = Date.now();
+    const result = await zk.unlockZkDevice({
+      ip,
+      port: Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+      comm_key: req.body?.comm_key,
+      socket_timeout_ms: socketTimeoutMs,
+      udp_local_port: 5000,
+    });
+    log(result?.ok ? 'unlock_device_success' : 'unlock_device_fail', {
+      ip,
+      port,
+      ms: Date.now() - started,
+      ok: Boolean(result?.ok),
+    });
+    return res.status(200).json({
+      ok: Boolean(result?.ok),
+      connection_type: result?.connection_type || null,
+      errors: Array.isArray(result?.errors) ? result.errors : [],
+      source: 'local_agent',
+      duration_ms: Date.now() - started,
+    });
+  }
+
+  if (action === 'set_user_privilege') {
+    const zk = getZktecoSocket();
+    const uid = Number(req.body?.uid);
+    const isAdmin = req.body?.is_admin === true;
+    if (!Number.isInteger(uid) || uid < 1) {
+      return res.status(422).json({ ok: false, error: 'uid is required and must be >= 1' });
+    }
+    const socketTimeoutMs = Number.isFinite(Number(req.body?.socket_timeout_ms))
+      ? Math.min(120000, Math.max(8000, Number(req.body.socket_timeout_ms)))
+      : 45000;
+    const targetRole = isAdmin ? 14 : 0;
+    const started = Date.now();
+
+    const listRes = await zk.fetchZkUsersList({
+      ip,
+      port: Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+      comm_key: req.body?.comm_key,
+      socket_timeout_ms: socketTimeoutMs,
+      udp_local_port: 5000,
+    });
+    if (!listRes?.ok) {
+      return res.status(200).json({
+        ok: false,
+        error: listRes?.errors?.[0]?.message || 'Failed to read users from device',
+        errors: Array.isArray(listRes?.errors) ? listRes.errors : [],
+        source: 'local_agent',
+        duration_ms: Date.now() - started,
+      });
+    }
+
+    const u = (listRes.users || []).find((x) => Number(x.uid) === uid);
+    if (!u) {
+      return res.status(200).json({
+        ok: false,
+        error: `UID ${uid} not found on device`,
+        source: 'local_agent',
+        duration_ms: Date.now() - started,
+      });
+    }
+
+    const writeRes = await zk.setZkUserWrite({
+      ip,
+      port: Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+      comm_key: req.body?.comm_key,
+      socket_timeout_ms: socketTimeoutMs,
+      uid,
+      userId: u.userId,
+      name: u.name,
+      password: u.password,
+      pin8_b64: u.__zk_pin8_b64,
+      role: targetRole,
+      cardno: u.cardno,
+    });
+    log(writeRes?.ok ? 'set_user_privilege_success' : 'set_user_privilege_fail', {
+      ip,
+      port,
+      uid,
+      is_admin: isAdmin,
+      ms: Date.now() - started,
+      ok: Boolean(writeRes?.ok),
+    });
+    return res.status(200).json({
+      ok: Boolean(writeRes?.ok),
+      uid,
+      is_admin: isAdmin,
+      applied_role: targetRole,
+      previous_role: Number.isFinite(Number(u.role)) ? Number(u.role) : 0,
+      connection_type: writeRes?.connection_type || null,
+      errors: Array.isArray(writeRes?.errors) ? writeRes.errors : [],
+      source: 'local_agent',
+      duration_ms: Date.now() - started,
+    });
+  }
+
   return res.status(400).json({ ok: false, error: 'Unknown action' });
 });
 

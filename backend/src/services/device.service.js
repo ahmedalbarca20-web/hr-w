@@ -26,6 +26,34 @@ function localAgentAuthToken() {
   return String(process.env.LOCAL_AGENT_TOKEN || process.env.AGENT_TOKEN || '').trim();
 }
 
+async function executeLocalAgentAction(body, { timeoutMs = 60000 } = {}) {
+  const base = localAgentBaseUrl();
+  if (!base) return null;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(`${base}/execute`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(localAgentAuthToken() ? { authorization: `Bearer ${localAgentAuthToken()}` } : {}),
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw Object.assign(new Error(payload?.error || `Local agent HTTP ${resp.status}`), {
+        statusCode: 502,
+        code: 'LOCAL_AGENT_ERROR',
+      });
+    }
+    return payload;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 /** Base URL of [dtr.zkteco.api](https://github.com/itechxcellence/dtr.zkteco.api) on the LAN (or ngrok). When set, ZK reads use HTTP snapshot instead of TCP from this process. */
 function dtrBridgeBaseUrl() {
   return String(process.env.DTR_ZKTECO_API_URL || '').trim().replace(/\/$/, '');
@@ -1231,6 +1259,33 @@ async function setZkDeviceUserPrivilege(device_id, company_id, body = {}) {
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
 
+  if (localAgentBaseUrl()) {
+    const payload = await executeLocalAgentAction({
+      action: 'set_user_privilege',
+      device_ip: host,
+      port,
+      comm_key: body.comm_key ?? dev.comm_key ?? undefined,
+      uid,
+      is_admin: isAdmin,
+      socket_timeout_ms,
+    }, { timeoutMs: Math.min(120000, socket_timeout_ms + 12000) });
+
+    if (!payload?.ok) {
+      const msg = payload?.errors?.[0]?.message || payload?.error || 'Local agent set_user_privilege failed';
+      throw Object.assign(new Error(msg), { statusCode: 502, code: 'ZK_ERROR' });
+    }
+
+    await dev.update({ last_sync: new Date() });
+    return {
+      device: { id: dev.id, name: dev.name, serial_number: dev.serial_number },
+      uid,
+      is_admin: isAdmin,
+      previous_role: payload.previous_role ?? null,
+      applied_role: payload.applied_role ?? (isAdmin ? ZK_PRIV_ADMIN : ZK_PRIV_USER),
+      connection_type: payload.connection_type || 'local_agent',
+    };
+  }
+
   /** فك قفل الشاشة أولاً (بعد سحب بصمات أو جلسة سابقة قد تُبقي الجهاز في وضع الإيقاف). */
   await zktecoSocket.unlockZkDevice({
     ip                : host,
@@ -1311,6 +1366,24 @@ async function unlockDeviceZkSession(device_id, company_id, body = {}) {
   if (dev.status === 'OFFLINE') throw badReq('Cannot reach device: device is offline');
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+
+  if (localAgentBaseUrl()) {
+    const payload = await executeLocalAgentAction({
+      action: 'unlock_device',
+      device_ip: host,
+      port,
+      comm_key: body.comm_key ?? dev.comm_key ?? undefined,
+      socket_timeout_ms,
+    }, { timeoutMs: Math.min(120000, socket_timeout_ms + 12000) });
+    if (!payload?.ok) {
+      const msg = payload?.errors?.[0]?.message || payload?.error || 'Local agent unlock failed';
+      throw Object.assign(new Error(msg), { statusCode: 502, code: 'ZK_ERROR' });
+    }
+    return {
+      device: { id: dev.id, name: dev.name, serial_number: dev.serial_number },
+      connection_type: payload.connection_type || 'local_agent',
+    };
+  }
 
   const res = await zktecoSocket.unlockZkDevice({
     ip                : host,
