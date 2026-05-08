@@ -10,9 +10,60 @@ function parseCommKeyRaw(v) {
   if (v === undefined || v === null) return null;
   const s = String(v).trim();
   if (!s) return null;
-  const n = Number.parseInt(s, 10);
-  if (!Number.isFinite(n) || n < 0 || n > 0x7fffffff) return null;
-  return n;
+  let n;
+  if (/^0[xX][0-9a-fA-F]{1,8}$/.test(s)) {
+    n = Number.parseInt(s.slice(2), 16);
+  } else if (/[a-fA-F]/.test(s) && /^[0-9a-fA-F]+$/.test(s)) {
+    n = Number.parseInt(s, 16);
+  } else {
+    n = Number.parseInt(s, 10);
+  }
+  if (!Number.isFinite(n) || n < 0 || n > 0xffffffff) return null;
+  return n >>> 0;
+}
+
+/**
+ * Build CMD_AUTH payload: scramble comm password with session id from CMD_CONNECT.
+ * Same algorithm as pyzk `make_commkey` (ZK commpro MakeKey) — not raw UInt32LE(password).
+ */
+function makeZkAuthPayloadFromCommKey(commKeyUnsigned, sessionId, ticks = 50) {
+  const key = BigInt(commKeyUnsigned >>> 0);
+  const sess = BigInt(sessionId >>> 0);
+  let k = 0n;
+  for (let i = 0; i < 32; i += 1) {
+    if ((key >> BigInt(i)) & 1n) {
+      k = (k << 1n) | 1n;
+    } else {
+      k = k << 1n;
+    }
+    k += sess;
+  }
+  const k32 = k & 0xffffffffn;
+  const w = Buffer.alloc(4);
+  w.writeUInt32LE(Number(k32), 0);
+  const b0 = w[0] ^ 0x5a;
+  const b1 = w[1] ^ 0x4b;
+  const b2 = w[2] ^ 0x53;
+  const b3 = w[3] ^ 0x4f;
+  const swapped = Buffer.from([b2, b3, b0, b1]);
+  const B = ticks & 0xff;
+  return Buffer.from([
+    (swapped[0] ^ B) & 0xff,
+    (swapped[1] ^ B) & 0xff,
+    B & 0xff,
+    (swapped[3] ^ B) & 0xff,
+  ]);
+}
+
+function zkTransportSessionId(zk) {
+  if (!zk || typeof zk !== 'object') return null;
+  if (zk.connectionType === 'tcp' && zk.ztcp && zk.ztcp.sessionId != null) {
+    return zk.ztcp.sessionId;
+  }
+  if (zk.connectionType === 'udp' && zk.zudp && zk.zudp.sessionId != null) {
+    return zk.zudp.sessionId;
+  }
+  return null;
 }
 
 function decodeMojibakeUtf8Latin1(s) {
@@ -47,8 +98,14 @@ function normalizeZkUsersRows(users) {
 async function zkAuthWithCommKey(zk, commKeyRaw) {
   const commKey = parseCommKeyRaw(commKeyRaw);
   if (commKey == null) return;
-  const authPayload = Buffer.alloc(4);
-  authPayload.writeUInt32LE(commKey >>> 0, 0);
+  const sessionId = zkTransportSessionId(zk);
+  let authPayload;
+  if (sessionId != null && Number.isFinite(Number(sessionId))) {
+    authPayload = makeZkAuthPayloadFromCommKey(commKey, Number(sessionId), 50);
+  } else {
+    authPayload = Buffer.alloc(4);
+    authPayload.writeUInt32LE(commKey >>> 0, 0);
+  }
   await zk.executeCmd(ZK_COMMANDS.CMD_AUTH, authPayload);
 }
 
