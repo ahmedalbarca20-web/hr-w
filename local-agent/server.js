@@ -296,6 +296,16 @@ app.post('/execute', auth, async (req, res) => {
   return res.status(400).json({ ok: false, error: 'Unknown action' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  log('agent_started', { port: PORT, token_protected: Boolean(TOKEN) });
-});
+// Export helpers so the polling worker can reuse the same probe implementation.
+module.exports = {
+  app,
+  log,
+  runProbe,
+  DEFAULT_TIMEOUT_MS,
+};
+
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    log('agent_started', { port: PORT, token_protected: Boolean(TOKEN) });
+  });
+}

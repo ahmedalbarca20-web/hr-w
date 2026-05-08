@@ -6,7 +6,10 @@ import {
   createDevice,
   updateDevice,
   probeDeviceViaAgent,
+<<<<<<< HEAD
   probeLocalAgent,
+=======
+>>>>>>> 95eb295f5def2c5c3da5abbaff9693d85cdff619
   probeDeviceConnection,
   probeZkSocket,
 } from '../../api/device.api';
@@ -105,6 +108,7 @@ export default function DeviceForm() {
     const zkPort = Number.isFinite(Number(portRaw)) && Number(portRaw) > 0 ? Number(portRaw) : 4370;
 
     try {
+<<<<<<< HEAD
       const tryLocalBrowserAgent = async () => {
         try {
           const res = await probeLocalAgent({ device_ip: form.ip_address.trim(), port: zkPort, timeout_ms: 1200 });
@@ -121,6 +125,8 @@ export default function DeviceForm() {
         return false;
       };
 
+=======
+>>>>>>> 95eb295f5def2c5c3da5abbaff9693d85cdff619
       const tryAgentProbe = async () => {
         const agentRes = await probeDeviceViaAgent({
           device_ip: form.ip_address.trim(),
@@ -176,8 +182,11 @@ export default function DeviceForm() {
         return false;
       };
 
+<<<<<<< HEAD
       // Try direct browser → local-agent first (works when local-agent runs on the user's PC)
       if (await tryLocalBrowserAgent()) return;
+=======
+>>>>>>> 95eb295f5def2c5c3da5abbaff9693d85cdff619
       if (await tryAgentProbe()) return;
 
       const zkRes = await probeZkSocket({
