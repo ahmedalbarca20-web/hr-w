@@ -10,7 +10,6 @@ export const createDevice   = (data)   => api.post('/devices', data);
 export const probeDeviceConnection = (data) => api.post('/devices/probe-connection', data);
 /** Local-network relay probe via backend + local agent. Preferred for private LAN device checks. */
 export const probeDeviceViaAgent = (data) => api.post('/probe-device', data);
-<<<<<<< HEAD
 /** Try calling the local agent directly from the browser (localhost). Returns { status, data } or throws. */
 export const probeLocalAgent = async (data) => {
 	const url = 'http://127.0.0.1:8099/execute';
@@ -23,8 +22,6 @@ export const probeLocalAgent = async (data) => {
 	const json = await resp.json().catch(() => null);
 	return { status: resp.status, data: json };
 };
-=======
->>>>>>> 95eb295f5def2c5c3da5abbaff9693d85cdff619
 /** ZK binary protocol (zkteco-js) — TCP/UDP; optional fields: socket_timeout_ms, udp_local_port, include_users, max_users */
 export const probeZkSocket = (data) => api.post('/devices/probe-zk-socket', data);
 /** Combined diagnostics: ZK path + HTTP probe + runtime env hints. */

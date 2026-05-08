@@ -32,25 +32,13 @@ const router = Router();
 // Health check (no auth required)
 router.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 
-<<<<<<< HEAD
 /** LAN device probe via Local Agent (JWT + devices feature). Body: { device_ip, timeout_ms? } */
-=======
-/** LAN device probe via Polling Agent (JWT + devices feature).
- * Body: { agent_id, device_ip, timeout_ms? }
- * Creates a job in the agent queue instead of calling the LAN directly.
- */
->>>>>>> 95eb295f5def2c5c3da5abbaff9693d85cdff619
 router.post(
   '/probe-device',
   authenticate,
   requireFeature('devices'),
   requireRole('ADMIN', 'HR'),
-<<<<<<< HEAD
   deviceController.probeDeviceGateway,
-);
-
-=======
-  agentJobController.createProbeJob,
 );
 
 // Agent polling API (called by the LAN agent; Bearer AGENT_SHARED_TOKEN).
@@ -58,7 +46,7 @@ router.get('/agent/jobs', agentJobController.pollJobs);
 router.post('/agent/job-result', agentJobController.submitResult);
 router.get('/job-status/:id', agentJobController.getStatus);
 
->>>>>>> 95eb295f5def2c5c3da5abbaff9693d85cdff619
+
 /** ZKTeco iClock / ADMS default path — same handler as POST /devices/push (SN + key in query or body). */
 router.post('/iclock/cdata', authenticateDevice, deviceController.push);
 
