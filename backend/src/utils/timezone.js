@@ -70,10 +70,42 @@ function addCalendarDaysYmd(ymd, deltaDays) {
   return nd.toISOString().slice(0, 10);
 }
 
+function localDateKey(d) {
+  const x = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(x.getTime())) return null;
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, '0');
+  const day = String(x.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** YYYY-MM-DD for an instant in a specific IANA zone (company calendar day). */
+function calendarDateKeyInZone(isoOrDate, timeZone) {
+  const d = isoOrDate instanceof Date ? isoOrDate : new Date(isoOrDate);
+  if (Number.isNaN(d.getTime())) return null;
+  const tz = (timeZone && String(timeZone).trim()) || DEFAULT_IANA;
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(d);
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const m = parts.find((p) => p.type === 'month')?.value;
+    const day = parts.find((p) => p.type === 'day')?.value;
+    if (!y || !m || !day) return localDateKey(d);
+    return `${y}-${m}-${day}`;
+  } catch {
+    return localDateKey(d);
+  }
+}
+
 module.exports = {
   DEFAULT_IANA,
   ymdInTimeZone,
   dateRangeInclusiveYmd,
   addCalendarMonthsYmd,
   addCalendarDaysYmd,
+  calendarDateKeyInZone,
 };

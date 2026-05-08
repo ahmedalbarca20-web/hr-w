@@ -1,8 +1,12 @@
 const { badReq, notFound } = require('../utils/errors');
 const { Device, Company } = require('../models');
-const { calendarDateKeyInZone } = require('./shift.service');
+const { calendarDateKeyInZone } = require('../utils/timezone');
 const { pushLogs } = require('./device.service');
-const { zkAttendanceToPushLog, buildZkPinToDisplayName } = require('../utils/zkteco-js/ZkAttendanceMapper');
+const {
+  zkAttendanceToPushLog,
+  buildZkPinToDisplayName,
+  applyAlternatingInOutForInferredLogs,
+} = require('../utils/zkAttendanceMapper');
 
 async function importZkUsersToEmployeesDirect(device_id, company_id, opts = {}) {
   if (company_id == null || !Number.isFinite(Number(company_id)) || Number(company_id) < 1) {
@@ -61,6 +65,7 @@ async function importZkAttendancesDirectToDeviceLogs(device_id, company_id, payl
   let rejected_by_date = 0;
   const sample_dates_outside_range = [];
 
+  const staging = [];
   for (const row of zkPull.records) {
     const log = zkAttendanceToPushLog(row, zkNameByPin);
     if (!log) {
@@ -68,6 +73,12 @@ async function importZkAttendancesDirectToDeviceLogs(device_id, company_id, payl
       continue;
     }
     decoded_rows += 1;
+    staging.push(log);
+  }
+
+  applyAlternatingInOutForInferredLogs(staging, companyTz, dev.mode);
+
+  for (const log of staging) {
     const dk = calendarDateKeyInZone(log.event_time, companyTz);
     if (!dk) continue;
     if (date_from && dk < date_from) {

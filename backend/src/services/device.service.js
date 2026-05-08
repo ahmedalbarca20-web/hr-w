@@ -14,7 +14,12 @@ const surpriseAttendanceSvc = require('./surprise_attendance.service');
 const zktecoSocket = require('./zktecoSocket.service');
 const dtrZkBridge = require('./dtrZktecoBridge.service');
 const { paginate, paginateResult } = require('../utils/pagination');
-const { DEFAULT_IANA } = require('../utils/timezone');
+const { calendarDateKeyInZone } = require('../utils/timezone');
+const {
+  buildZkPinToDisplayName,
+  zkAttendanceToPushLog,
+  applyAlternatingInOutForInferredLogs,
+} = require('../utils/zkAttendanceMapper');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -62,58 +67,6 @@ function dtrBridgeBaseUrl() {
 const notFound  = (id) => Object.assign(new Error(`Device ${id} not found`), { statusCode: 404, code: 'NOT_FOUND' });
 const conflict  = (msg) => Object.assign(new Error(msg), { statusCode: 409, code: 'CONFLICT' });
 const badReq    = (msg) => Object.assign(new Error(msg), { statusCode: 400, code: 'VALIDATION_ERROR' });
-
-/** Normalize PIN / card / UID for ZK name map (same idea as pushLogs employee lookup). */
-function normZkKey(v) {
-  return String(v || '').trim().toUpperCase();
-}
-
-function zkPinLookupKeys(card_number) {
-  const keys = new Set();
-  const b = normZkKey(card_number);
-  if (!b) return keys;
-  keys.add(b);
-  if (/^\d+$/.test(b)) {
-    const n = parseInt(b, 10);
-    if (Number.isFinite(n)) {
-      keys.add(String(n));
-      for (let w = 1; w <= 9; w += 1) {
-        keys.add(String(n).padStart(w, '0'));
-      }
-    }
-  }
-  return keys;
-}
-
-function addZkUserKeysToNameMap(map, u) {
-  const name = String(u.name || '').trim();
-  if (!name) return;
-  const ids = [];
-  if (u.userId != null && String(u.userId).trim() !== '') ids.push(String(u.userId));
-  const cardNum = u.cardno != null ? Number(u.cardno) : 0;
-  if (cardNum > 0) ids.push(String(Math.trunc(cardNum)));
-  if (u.uid != null) ids.push(String(u.uid));
-  for (const id of ids) {
-    for (const k of zkPinLookupKeys(id)) {
-      map.set(k, name);
-    }
-  }
-}
-
-/** PIN / card / uid → display name as stored on ZK (UTF-8 after zkUserDecodePatch). */
-function buildZkPinToDisplayName(users) {
-  const m = new Map();
-  for (const u of users || []) addZkUserKeysToNameMap(m, u);
-  return m;
-}
-
-function lookupZkDisplayName(nameByPin, card_number) {
-  if (!nameByPin || !card_number) return '';
-  for (const k of zkPinLookupKeys(card_number)) {
-    if (nameByPin.has(k)) return nameByPin.get(k);
-  }
-  return '';
-}
 
 /** Generate a cryptographically random 48-character hex API key. */
 function generateApiKey() {
@@ -1404,106 +1357,6 @@ async function unlockDeviceZkSession(device_id, company_id, body = {}) {
 }
 
 /**
- * ZK general log verify_state (zk-protocol data-record.md).
- * 0 check-in, 1 check-out, 2 break out, 3 break in, 4 OT in, 5 OT out.
- */
-function mapZkVerifyStateToEventType(state) {
-  const s = Number(state);
-  if (!Number.isFinite(s)) return 'CHECK_IN';
-  if (s === 0 || s === 3 || s === 4) return 'CHECK_IN';
-  if (s === 1 || s === 2 || s === 5) return 'CHECK_OUT';
-  return 'CHECK_IN';
-}
-
-/**
- * Some firmwares/libraries expose the verify/in-out state with different keys
- * (number or string). Return normalized numeric state when possible.
- */
-function extractZkVerifyState(row) {
-  if (!row || typeof row !== 'object') return null;
-  const candidates = [
-    row.state,
-    row.verify_state,
-    row.verifyState,
-    row.in_out,
-    row.inOut,
-    row.punch,
-    row.punch_state,
-    row.status,
-    row.type,
-  ];
-  for (const v of candidates) {
-    const n = Number(v);
-    if (Number.isFinite(n)) return n;
-    const s = String(v ?? '').trim().toLowerCase();
-    if (!s) continue;
-    if (['in', 'check_in', 'checkin', 'clock in', 'clock-in'].includes(s)) return 0;
-    if (['out', 'check_out', 'checkout', 'clock out', 'clock-out'].includes(s)) return 1;
-  }
-  return null;
-}
-
-function localDateKey(d) {
-  const x = d instanceof Date ? d : new Date(d);
-  if (Number.isNaN(x.getTime())) return null;
-  const y = x.getFullYear();
-  const m = String(x.getMonth() + 1).padStart(2, '0');
-  const day = String(x.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/** YYYY-MM-DD for an instant in a specific IANA zone (aligns UI «day» with company settings). */
-function calendarDateKeyInZone(isoOrDate, timeZone) {
-  const d = isoOrDate instanceof Date ? isoOrDate : new Date(isoOrDate);
-  if (Number.isNaN(d.getTime())) return null;
-  const tz = (timeZone && String(timeZone).trim()) || DEFAULT_IANA;
-  try {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(d);
-    const y = parts.find((p) => p.type === 'year')?.value;
-    const m = parts.find((p) => p.type === 'month')?.value;
-    const day = parts.find((p) => p.type === 'day')?.value;
-    if (!y || !m || !day) return localDateKey(d);
-    return `${y}-${m}-${day}`;
-  } catch {
-    return localDateKey(d);
-  }
-}
-
-/** One row from zkteco-js getAttendances → { card_number, event_type, event_time ISO, raw, zk_display_name? }. */
-function zkAttendanceToPushLog(row, nameByPin = null) {
-  if (row == null || typeof row !== 'object') return null;
-  const raw = { zk_attendance: { ...row } };
-  const u = row.user_id != null ? row.user_id : row.userId;
-  let card_number = '';
-  if (typeof u === 'string') card_number = String(u).trim();
-  else if (typeof u === 'number' && Number.isFinite(u)) card_number = String(Math.trunc(u));
-  if (!card_number) return null;
-
-  const event_time = row.record_time instanceof Date ? row.record_time : new Date(row.record_time);
-  if (Number.isNaN(event_time.getTime())) return null;
-
-  const state = extractZkVerifyState(row);
-  const hasState = Number.isFinite(state);
-  if (!hasState) return null;
-  const event_type = mapZkVerifyStateToEventType(state);
-
-  const out = {
-    card_number,
-    event_type,
-    event_time: event_time.toISOString(),
-    raw,
-  };
-  const dn = lookupZkDisplayName(nameByPin, card_number);
-  if (dn) out.zk_display_name = dn;
-  return out;
-}
-
-/**
  * Read attendance buffer from ZK over LAN and insert into device_logs via the same path as POST /push.
  * Optional date filter + cap. If auto_process, runs attendance processBulk per affected calendar day.
  */
@@ -1626,6 +1479,7 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
   let rejected_by_date = 0;
   const sample_dates_outside_range = [];
 
+  const staging = [];
   for (const row of zkPull.records || []) {
     const log = zkAttendanceToPushLog(row, zkNameByPin);
     if (!log) {
@@ -1633,6 +1487,12 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
       continue;
     }
     decoded_rows += 1;
+    staging.push(log);
+  }
+
+  applyAlternatingInOutForInferredLogs(staging, companyTz, dev.mode);
+
+  for (const log of staging) {
     const dk = calendarDateKeyInZone(log.event_time, companyTz);
     if (!dk) continue;
     if (date_from && dk < date_from) {
