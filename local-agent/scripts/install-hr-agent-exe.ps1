@@ -117,8 +117,9 @@ if ($StartNow) {
 
 Write-Host ''
 if ($CloudApiBaseUrl -or $AgentId -or $AgentSharedToken) {
-  Write-Host 'Pre-filled .env from install parameters (IT). Employee: just use the PC on the same LAN as the device.' -ForegroundColor Green
+  Write-Host 'Pre-filled .env from install parameters (IT). Employee: PC on same LAN as the ZK device.' -ForegroundColor Green
 } else {
-  Write-Host 'IT: edit .env (CLOUD_API_BASE_URL, AGENT_ID, AGENT_SHARED_TOKEN) or reinstall with -CloudApiBaseUrl.' -ForegroundColor Yellow
+  Write-Host 'IT: edit .env (CLOUD_API_BASE_URL, AGENT_*) or reinstall with -CloudApiBaseUrl.' -ForegroundColor Yellow
 }
+Write-Host 'IT (cloud): set HR API LOCAL_AGENT_URL to this PC agent public URL + LOCAL_AGENT_TOKEN = same as here — all ZK ops use the agent.' -ForegroundColor Cyan
 Write-Host "Start-ScheduledTask -TaskName `"$TaskName`"" -ForegroundColor Green

@@ -10,7 +10,7 @@ This guide packages the LAN polling agent as a single Windows executable and ins
 
 ## للمسؤول / IT (مرة واحدة)
 
-- على **خادم الـ API** (مثل Vercel): اضبط `LOCAL_AGENT_URL` (نفق يشير لجهاز الوكيل) و`LOCAL_AGENT_TOKEN` بما يطابق `.env` على جهاز الوكيل.
+- على **خادم الـ API** (مثل Vercel): اضبط `LOCAL_AGENT_URL` (نفق يشير لجهاز الوكيل) و`LOCAL_AGENT_TOKEN` بما يطابق `.env` على جهاز الوكيل. **كل اتصالات ZK من الخادم تمر عبر هذا الوكيل** (لا اتصال مباشر من Vercel إلى `192.168.x`).
 - عند توزيع الوكيل، يمكن **تعبئة `.env` تلقائياً** عبر معاملات التثبيت (انظر أدناه: `-CloudApiBaseUrl`, `-AgentId`, …) حتى لا يحرّر الموظف الملف يدوياً.
 - الواجهة على استضافة عامة تستخدم **relay تلقائياً** عبر الـ API؛ الموظف لا يضبط `VITE_LOCAL_AGENT_RELAY`.
 

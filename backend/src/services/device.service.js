@@ -66,6 +66,7 @@ async function executeLocalAgentAction(body, { timeoutMs = 60000 } = {}) {
 
 const LOCAL_AGENT_RELAY_ACTIONS = new Set([
   'probe',
+  'zk_probe_snapshot',
   'list_users',
   'pull_attendance',
   'unlock_device',
@@ -99,6 +100,8 @@ async function forwardLocalAgentExecute(body = {}) {
   let budget;
   if (Number.isFinite(tSock)) {
     budget = Math.min(200000, Math.max(12000, tSock + 15000));
+  } else if (action === 'zk_probe_snapshot') {
+    budget = 120000;
   } else if (action === 'pull_attendance') {
     budget = 110000;
   } else if (action === 'list_users' || action === 'set_user_privilege') {
@@ -690,10 +693,9 @@ function buildQuickProbeUrls(host, userPort) {
  */
 async function probeDeviceConnection({ ip_address, port, quick = true }) {
   const agentBase = localAgentBaseUrl();
-  let agentFailure = null;
   if (agentBase) {
     const controller = new AbortController();
-    const timeoutMs = 2000;
+    const timeoutMs = quick ? 10000 : 20000;
     const t = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const resp = await fetch(`${agentBase}/probe-connection`, {
@@ -708,29 +710,30 @@ async function probeDeviceConnection({ ip_address, port, quick = true }) {
       const payload = await resp.json().catch(() => ({}));
       if (!resp.ok) {
         const msg = payload?.error || `Local agent HTTP ${resp.status}`;
-        agentFailure = {
+        return {
           ok: false,
           serial_number: null,
           firmware_version: null,
           message: `Local Agent error: ${msg}`,
-          hint: 'تحقق أن Local Agent يعمل على نفس شبكة الجهاز، وأن LOCAL_AGENT_TOKEN صحيح.',
-        };
-      } else {
-        return {
-          ...payload,
+          hint: 'تحقق أن Local Agent يعمل على نفس شبكة الجهاز، وأن LOCAL_AGENT_TOKEN يطابق الخادم (Vercel).',
           source: 'local_agent',
         };
       }
+      return {
+        ...payload,
+        source: 'local_agent',
+      };
     } catch (e) {
       const isAbort = e && (e.name === 'AbortError' || /aborted|abort/i.test(String(e.message || '')));
-      agentFailure = {
+      return {
         ok: false,
         serial_number: null,
         firmware_version: null,
         message: isAbort
           ? 'Local Agent timeout'
           : `Local Agent unreachable: ${e.message || e}`,
-        hint: 'تعذر الوصول إلى Local Agent من Vercel. تأكد من رابط LOCAL_AGENT_URL (ngrok) وأن الخدمة تعمل.',
+        hint: 'تعذر الوصول إلى وكيل الشبكة من الخادم. تأكد من LOCAL_AGENT_URL (نفق) وأن الوكيل يعمل.',
+        source: 'local_agent',
       };
     } finally {
       clearTimeout(t);
@@ -761,15 +764,9 @@ async function probeDeviceConnection({ ip_address, port, quick = true }) {
         message: serial
           ? 'تم الوصول عبر Local Bridge.'
           : 'تم الوصول عبر Local Bridge لكن لم يُقرأ الرقم التسلسلي.',
-        ...(agentFailure ? { agent_error: agentFailure.message } : {}),
       };
     } catch (e) {
       // Keep going to direct HTTP probe below.
-      if (!agentFailure) {
-        agentFailure = {
-          message: `DTR bridge error: ${e?.message || e}`,
-        };
-      }
     }
   }
 
@@ -814,7 +811,6 @@ async function probeDeviceConnection({ ip_address, port, quick = true }) {
     firmware_version: null,
     hint           : lanHint,
     ports_tried    : portsSorted,
-    ...(agentFailure ? { agent_error: agentFailure.message } : {}),
     message        : sawHttp
       ? 'الجهاز ردّ لكن تعذّر قراءة الرقم التسلسلي تلقائياً. أدخله يدوياً من ملصق الجهاز أو واجهة الويب.'
       : `تعذّر الاتصال بواجهة الويب للجهاز. جرّبنا المنافذ: ${portsLine}. آخر خطأ: ${lastErr || 'no response'}. `
@@ -881,45 +877,30 @@ async function simulateTestIngest(device_id, company_id, { card_number = 'TEST-P
 
 /** zkteco-js TCP/UDP read — arbitrary IP (e.g. from device form before save). */
 async function probeZkSocket(body) {
-  const agentBase = localAgentBaseUrl();
-  if (agentBase) {
-    const controller = new AbortController();
-    const timeoutMs = 2200;
-    const t = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const resp = await fetch(`${agentBase}/execute`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(localAgentAuthToken() ? { authorization: `Bearer ${localAgentAuthToken()}` } : {}),
-        },
-        body: JSON.stringify({
-          action: 'probe',
-          device_ip: body.ip_address,
-          port: body.port,
-          timeout_ms: Math.min(1000, Math.max(200, Number(body.socket_timeout_ms) || 800)),
-        }),
-        signal: controller.signal,
-      });
-      const payload = await resp.json().catch(() => ({}));
-      if (resp.ok && payload && typeof payload === 'object') {
-        return {
-          ok: Boolean(payload.ok),
-          serial_number: payload.serial_number || null,
-          firmware_version: null,
-          connection_type: 'local_agent',
-          source: 'local_agent',
-          duration_ms: payload.duration_ms ?? null,
-          message: payload.message || (payload.ok ? 'Local Agent probe succeeded.' : 'Local Agent probe failed.'),
-          errors: payload.ok ? [] : [{ code: payload.code || 'LOCAL_AGENT_PROBE_FAIL', message: payload.message || 'Local agent probe failed' }],
-          hint_ar: payload.hint || (payload.ok ? null : 'تحقق من تشغيل Local Agent وربط Cloudflare Tunnel.'),
-        };
-      }
-    } catch (_e) {
-      // Fall back to DTR bridge / direct zkteco-js below.
-    } finally {
-      clearTimeout(t);
-    }
+  if (localAgentBaseUrl()) {
+    const sock = Number(body.socket_timeout_ms);
+    const timeoutMs = Math.min(
+      125000,
+      Math.max(25000, Number.isFinite(sock) ? sock + 20000 : 55000),
+    );
+    const payload = await executeLocalAgentAction({
+      action: 'zk_probe_snapshot',
+      device_ip: body.ip_address,
+      ip_address: body.ip_address,
+      port: body.port ?? 4370,
+      comm_key: body.comm_key,
+      socket_timeout_ms: body.socket_timeout_ms,
+      udp_local_port: body.udp_local_port,
+      minimal_probe: body.minimal_probe === true,
+      include_users: body.include_users !== false,
+      max_users: body.max_users ?? 80,
+      include_attendance_size: body.include_attendance_size === true,
+    }, { timeoutMs });
+    return {
+      ...payload,
+      connection_type: payload.connection_type || 'local_agent',
+      source: 'local_agent',
+    };
   }
 
   const bridge = dtrBridgeBaseUrl();
@@ -957,12 +938,16 @@ async function debugZkConnection(body) {
     hints.push('force_direct_zk نشط — يُتجاوز الجسر مؤقتاً ويُجرّب zkteco-js مباشرة.');
   }
 
-  const zkLabel = dtrBase && !body.force_direct_zk ? 'dtr_bridge_probe' : 'zkteco_js_direct';
+  let zkLabel = 'zkteco_js_direct';
   const zkT0 = Date.now();
   let zk = { ok: false, errors: [{ message: 'not run' }] };
   try {
-    if (dtrBase && !body.force_direct_zk) {
+    if (localAgentBaseUrl()) {
+      zk = await probeZkSocket(body);
+      zkLabel = 'local_agent_zk_probe';
+    } else if (dtrBase && !body.force_direct_zk) {
       zk = await dtrZkBridge.probeSnapshotFromBridge(dtrBase, body);
+      zkLabel = 'dtr_bridge_probe';
     } else {
       zk = await zktecoSocket.probeSnapshot({
         ip                       : body.ip_address,
@@ -974,6 +959,7 @@ async function debugZkConnection(body) {
         max_users                : body.max_users,
         include_attendance_size  : body.include_attendance_size,
       });
+      zkLabel = 'zkteco_js_direct';
     }
   } catch (e) {
     zk = { ok: false, errors: [{ message: e.message, code: e.code }] };
@@ -1065,12 +1051,37 @@ async function readZkFromRegisteredDevice(device_id, company_id, overrides = {})
     attributes: ['id', 'ip_address', 'name', 'comm_key'],
   });
   if (!dev) throw notFound(device_id);
+  const host = (dev.ip_address || '').trim();
+  if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+
+  if (localAgentBaseUrl()) {
+    const regUdp = Number.isFinite(Number(overrides.udp_local_port))
+      ? Math.min(65535, Math.max(1024, Number(overrides.udp_local_port)))
+      : undefined;
+    const sock = Number(overrides.socket_timeout_ms);
+    const timeoutMs = Math.min(
+      125000,
+      Math.max(25000, Number.isFinite(sock) ? sock + 20000 : 55000),
+    );
+    return executeLocalAgentAction({
+      action: 'zk_probe_snapshot',
+      device_ip: host,
+      ip_address: host,
+      port: overrides.port ?? 4370,
+      comm_key: overrides.comm_key ?? dev.comm_key ?? undefined,
+      socket_timeout_ms: overrides.socket_timeout_ms ?? 8000,
+      udp_local_port: regUdp,
+      minimal_probe: overrides.minimal_probe === true,
+      include_users: overrides.include_users !== false,
+      max_users: overrides.max_users ?? 80,
+      include_attendance_size: overrides.include_attendance_size === true,
+    }, { timeoutMs });
+  }
+
   const bridge = dtrBridgeBaseUrl();
   if (bridge) {
     return dtrZkBridge.probeSnapshotFromBridge(bridge, overrides);
   }
-  const host = (dev.ip_address || '').trim();
-  if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
   const regUdp = Number.isFinite(Number(overrides.udp_local_port))
     ? Math.min(65535, Math.max(1024, Number(overrides.udp_local_port)))
     : undefined;
@@ -1109,6 +1120,41 @@ async function listZkUsersOnDevice(device_id, company_id, query = {}) {
   });
   if (!dev) throw notFound(device_id);
 
+  if (localAgentBaseUrl()) {
+    const host = (dev.ip_address || '').trim();
+    if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+    if (dev.status === 'OFFLINE') throw badReq('Cannot read device users: device is offline');
+    const socketRaw = query.socket_timeout_ms;
+    const socket_timeout_ms = Number.isFinite(Number(socketRaw))
+      ? Math.min(120000, Math.max(8000, Number(socketRaw)))
+      : 45000;
+    const payload = await executeLocalAgentAction({
+      action: 'list_users',
+      device_ip: host,
+      port: query.port,
+      comm_key: query.comm_key ?? dev.comm_key ?? undefined,
+      socket_timeout_ms,
+      udp_local_port: query.udp_local_port,
+    }, { timeoutMs: Math.min(120000, socket_timeout_ms + 15000) });
+    if (!payload?.ok) {
+      const msg = payload?.errors?.[0]?.message || payload?.message || 'Local Agent ZK read failed';
+      throw Object.assign(new Error(msg), { statusCode: 502, code: 'ZK_ERROR' });
+    }
+    const includePassword = query.include_password === true;
+    const rawUsers = Array.isArray(payload.users) ? payload.users : [];
+    return {
+      device               : { id: dev.id, name: dev.name, serial_number: dev.serial_number },
+      users                : sanitizeZkUserRows(rawUsers, includePassword),
+      user_count_on_device : payload.user_count_on_device ?? rawUsers.length,
+      attendance_size      : null,
+      info                 : {
+        source: 'local_agent',
+        connection_type: payload.connection_type || null,
+        duration_ms: payload.duration_ms ?? null,
+      },
+    };
+  }
+
   const bridge = dtrBridgeBaseUrl();
   if (bridge) {
     const payload = await dtrZkBridge.fetchBioSyncPayload(bridge);
@@ -1127,55 +1173,6 @@ async function listZkUsersOnDevice(device_id, company_id, query = {}) {
       attendance_size      : payload.device_details?.attendanceSize ?? null,
       info                 : payload.device_details?.info ?? payload.device_details ?? null,
     };
-  }
-
-  const agentBase = localAgentBaseUrl();
-  if (agentBase) {
-    const controller = new AbortController();
-    const timeoutMs = 50000;
-    const t = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const resp = await fetch(`${agentBase}/execute`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(localAgentAuthToken() ? { authorization: `Bearer ${localAgentAuthToken()}` } : {}),
-        },
-        body: JSON.stringify({
-          action: 'list_users',
-          device_ip: dev.ip_address,
-          port: query.port,
-          comm_key: query.comm_key ?? dev.comm_key ?? undefined,
-          socket_timeout_ms: query.socket_timeout_ms,
-          udp_local_port: query.udp_local_port,
-        }),
-        signal: controller.signal,
-      });
-      const payload = await resp.json().catch(() => ({}));
-      if (resp.ok && payload && typeof payload === 'object') {
-        if (!payload.ok) {
-          const msg = payload.errors?.[0]?.message || payload.message || 'Local Agent ZK read failed';
-          throw Object.assign(new Error(msg), { statusCode: 502, code: 'ZK_ERROR' });
-        }
-        const includePassword = query.include_password === true;
-        const rawUsers = Array.isArray(payload.users) ? payload.users : [];
-        return {
-          device               : { id: dev.id, name: dev.name, serial_number: dev.serial_number },
-          users                : sanitizeZkUserRows(rawUsers, includePassword),
-          user_count_on_device : payload.user_count_on_device ?? rawUsers.length,
-          attendance_size      : null,
-          info                 : {
-            source: 'local_agent',
-            connection_type: payload.connection_type || null,
-            duration_ms: payload.duration_ms ?? null,
-          },
-        };
-      }
-    } catch (_e) {
-      // Fall back to direct socket call below.
-    } finally {
-      clearTimeout(t);
-    }
   }
 
   if (dev.status === 'OFFLINE') throw badReq('Cannot read device users: device is offline');
@@ -1308,6 +1305,12 @@ async function setZkDeviceUserPrivilege(device_id, company_id, body = {}) {
       applied_role: payload.applied_role ?? (isAdmin ? ZK_PRIV_ADMIN : ZK_PRIV_USER),
       connection_type: payload.connection_type || 'local_agent',
     };
+  }
+
+  if (isPrivateLanHost(host) && process.env.VERCEL === '1') {
+    throw badReq(
+      'خادم Vercel لا يصل إلى عنوان الجهاز الداخلي. اضبط LOCAL_AGENT_URL و LOCAL_AGENT_TOKEN على الخادم ليشيرا إلى وكيل الشبكة على نفس LAN جهاز البصمة.',
+    );
   }
 
   /** فك قفل الشاشة أولاً (بعد سحب بصمات أو جلسة سابقة قد تُبقي الجهاز في وضع الإيقاف). */
@@ -1460,8 +1463,12 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
 
   const bridge = dtrBridgeBaseUrl();
   const host = (dev.ip_address || '').trim();
+  const useAgent = Boolean(localAgentBaseUrl());
 
-  if (!bridge) {
+  if (useAgent) {
+    if (dev.status === 'OFFLINE') throw badReq('Cannot pull attendance: device is marked offline');
+    if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+  } else if (!bridge) {
     if (dev.status === 'OFFLINE') throw badReq('Cannot pull attendance: device is marked offline');
     if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
   }
@@ -1469,8 +1476,28 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
   const co = await Company.findByPk(company_id, { attributes: ['timezone'] }).catch(() => null);
   const companyTz = (co && co.timezone) ? String(co.timezone).trim() : 'Asia/Baghdad';
 
+  const pullPort = port != null && Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370;
+
   let zkPull;
-  if (bridge) {
+  if (useAgent) {
+    const timeoutMs = Math.min(200000, Math.max(20000, Number(socket_timeout_ms) + 20000));
+    const payload = await executeLocalAgentAction({
+      action: 'pull_attendance',
+      device_ip: host,
+      port: pullPort,
+      comm_key: comm_key ?? dev.comm_key ?? undefined,
+      socket_timeout_ms,
+    }, { timeoutMs });
+    zkPull = {
+      ok: Boolean(payload.ok),
+      connection_type: payload.connection_type || 'local_agent',
+      attendance_size: payload.attendance_size ?? null,
+      records: Array.isArray(payload.records) ? payload.records : [],
+      device_users: Array.isArray(payload.device_users) ? payload.device_users : [],
+      errors: Array.isArray(payload.errors) ? payload.errors : [],
+      attendance_retry_without_disable: Boolean(payload.attendance_retry_without_disable),
+    };
+  } else if (bridge) {
     const payload = await dtrZkBridge.fetchBioSyncPayload(bridge);
     if (!payload) {
       throw Object.assign(
@@ -1489,55 +1516,10 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
       errors: [],
       attendance_retry_without_disable: false,
     };
-  } else if (localAgentBaseUrl()) {
-    const agentBase = localAgentBaseUrl();
-    const controller = new AbortController();
-    const timeoutMs = Math.min(120000, Math.max(10000, Number(socket_timeout_ms) + 12000));
-    const t = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const resp = await fetch(`${agentBase}/execute`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(localAgentAuthToken() ? { authorization: `Bearer ${localAgentAuthToken()}` } : {}),
-        },
-        body: JSON.stringify({
-          action: 'pull_attendance',
-          device_ip: host,
-          port: port != null && Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
-          comm_key: comm_key ?? dev.comm_key ?? undefined,
-          socket_timeout_ms,
-        }),
-        signal: controller.signal,
-      });
-      const payload = await resp.json().catch(() => ({}));
-      if (resp.ok && payload && typeof payload === 'object') {
-        zkPull = {
-          ok: Boolean(payload.ok),
-          connection_type: payload.connection_type || 'local_agent',
-          attendance_size: payload.attendance_size ?? null,
-          records: Array.isArray(payload.records) ? payload.records : [],
-          device_users: Array.isArray(payload.device_users) ? payload.device_users : [],
-          errors: Array.isArray(payload.errors) ? payload.errors : [],
-          attendance_retry_without_disable: Boolean(payload.attendance_retry_without_disable),
-        };
-      } else {
-        throw new Error('Local agent attendance response malformed');
-      }
-    } catch (_e) {
-      zkPull = await zktecoSocket.fetchAttendanceLogs({
-        ip                : host,
-        port              : port != null && Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
-        comm_key          : comm_key ?? dev.comm_key ?? undefined,
-        socket_timeout_ms,
-      });
-    } finally {
-      clearTimeout(t);
-    }
   } else {
     zkPull = await zktecoSocket.fetchAttendanceLogs({
       ip                : host,
-      port              : port != null && Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+      port              : pullPort,
       comm_key          : comm_key ?? dev.comm_key ?? undefined,
       socket_timeout_ms,
     });
@@ -1623,7 +1605,7 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
 
   const rawBody = {
     _meta: {
-      source   : bridge ? 'dtr_zkteco_bridge' : 'zk_attendance_pull',
+      source   : bridge ? 'dtr_zkteco_bridge' : (useAgent ? 'zk_attendance_pull_agent' : 'zk_attendance_pull'),
       device_id: dev.id,
       at       : new Date().toISOString(),
       zk       : {

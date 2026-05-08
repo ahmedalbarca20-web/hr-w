@@ -231,7 +231,14 @@ app.post('/probe-connection', auth, async (req, res) => {
 app.post('/execute', auth, async (req, res) => {
   const action = String(req.body?.action || '').trim().toLowerCase();
   const ip = String(req.body?.device_ip || req.body?.ip_address || '').trim();
-  const defaultPort = action === 'list_users' ? 4370 : 80;
+  const zkMachineActions = new Set([
+    'list_users',
+    'pull_attendance',
+    'unlock_device',
+    'set_user_privilege',
+    'zk_probe_snapshot',
+  ]);
+  const defaultPort = zkMachineActions.has(action) ? 4370 : 80;
   const port = Number.isFinite(Number(req.body?.port)) && Number(req.body.port) > 0 ? Number(req.body.port) : defaultPort;
   const timeoutMsRaw = Number(req.body?.timeout_ms || DEFAULT_TIMEOUT_MS);
   if (!ip) return res.status(422).json({ ok: false, error: 'device_ip is required' });
@@ -239,6 +246,41 @@ app.post('/execute', auth, async (req, res) => {
   if (action === 'probe') {
     const out = await runProbe({ ip, port, timeoutMsRaw });
     return res.status(200).json(out);
+  }
+
+  if (action === 'zk_probe_snapshot') {
+    const zk = getZktecoSocket();
+    const socketRaw = req.body?.socket_timeout_ms ?? req.body?.timeout_ms;
+    const socketTimeoutMs = Number.isFinite(Number(socketRaw))
+      ? Math.min(120000, Math.max(2000, Number(socketRaw)))
+      : 8000;
+    const udpLocalPort = Number.isFinite(Number(req.body?.udp_local_port))
+      ? Math.min(65535, Math.max(1024, Number(req.body.udp_local_port)))
+      : undefined;
+    const portZk = Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370;
+    const started = Date.now();
+    const result = await zk.probeSnapshot({
+      ip,
+      port: portZk,
+      comm_key: req.body?.comm_key,
+      socket_timeout_ms: socketTimeoutMs,
+      udp_local_port: udpLocalPort,
+      minimal_probe: req.body?.minimal_probe === true,
+      include_users: req.body?.include_users !== false,
+      max_users: Number.isFinite(Number(req.body?.max_users)) ? Math.min(2000, Number(req.body.max_users)) : 80,
+      include_attendance_size: req.body?.include_attendance_size === true,
+    });
+    log(result?.ok ? 'zk_probe_snapshot_success' : 'zk_probe_snapshot_fail', {
+      ip,
+      port: portZk,
+      ms: Date.now() - started,
+      ok: Boolean(result?.ok),
+    });
+    return res.status(200).json({
+      ...result,
+      source: 'local_agent',
+      duration_ms: Date.now() - started,
+    });
   }
 
   if (action === 'list_users') {
