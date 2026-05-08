@@ -414,8 +414,17 @@ const importZkUsersToEmployeesDirect = asyncHandler(async (req, res) => {
 const importZkAttendancesDirect = asyncHandler(async (req, res) => {
   const id = parseId(req, res); if (id === null) return;
   const company_id = resolveCompanyId(req);
-  const data = await require('../services/device-proxy.service').importZkAttendancesDirectToDeviceLogs(id, company_id, req.body);
-  sendSuccess(res, data, 'تم سحب سجلات البصمة من الوكيل المحلي بنجاح');
+  try {
+    const data = await require('../services/device-proxy.service').importZkAttendancesDirectToDeviceLogs(id, company_id, req.body);
+    sendSuccess(res, data, 'تم سحب سجلات البصمة من الوكيل المحلي بنجاح');
+  } catch (err) {
+    // Temporary debug helper: if ?debug=1 is present, return full error message and stack
+    if (req.query && (req.query.debug === '1' || req.query.debug === 'true')) {
+      const msg = `${err.message || 'Error'}\n${err.stack || ''}`;
+      return sendError(res, msg, 500, 'DEBUG_ERROR');
+    }
+    throw err;
+  }
 });
 
 module.exports = {
