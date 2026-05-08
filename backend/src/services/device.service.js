@@ -31,6 +31,11 @@ function localAgentAuthToken() {
   return String(process.env.LOCAL_AGENT_TOKEN || process.env.AGENT_TOKEN || '').trim();
 }
 
+function isPrivateLanHost(host) {
+  const h = String(host || '').trim();
+  return /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.|127\.)/.test(h);
+}
+
 async function executeLocalAgentAction(body, { timeoutMs = 60000 } = {}) {
   const base = localAgentBaseUrl();
   if (!base) return null;
@@ -1402,6 +1407,12 @@ async function unlockDeviceZkSession(device_id, company_id, body = {}) {
       device: { id: dev.id, name: dev.name, serial_number: dev.serial_number },
       connection_type: payload.connection_type || 'local_agent',
     };
+  }
+
+  if (isPrivateLanHost(host) && process.env.VERCEL === '1') {
+    throw badReq(
+      'خادم Vercel لا يصل إلى عنوان الجهاز على الشبكة الداخلية (مثل 192.168.x). اضبط على Vercel المتغيرين LOCAL_AGENT_URL و LOCAL_AGENT_TOKEN ليشيرا إلى وكيل الشبكة (نفق) يعمل على حاسبة بنفس شبكة جهاز البصمة، ثم أعد محاولة فك القفل.',
+    );
   }
 
   const res = await zktecoSocket.unlockZkDevice({
