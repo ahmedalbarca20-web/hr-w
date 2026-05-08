@@ -2,10 +2,35 @@ param(
   [string]$InstallDir = "$env:ProgramData\HRLocalAgent",
   [string]$TaskName = "HRLocalAgent",
   [switch]$StartNow,
-  [switch]$PerUser
+  [switch]$PerUser,
+  # IT only, e.g. https://your-app.vercel.app/api (pre-fills .env so employees do not edit it).
+  [string]$CloudApiBaseUrl = '',
+  [string]$AgentId = '',
+  [string]$AgentSharedToken = '',
+  [string]$LocalAgentToken = ''
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Update-EnvKeyValue([string]$path, [string]$key, [string]$value) {
+  if ([string]::IsNullOrWhiteSpace($value)) { return }
+  if (-not (Test-Path $path)) { return }
+  $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+  $lines = [System.IO.File]::ReadAllLines($path)
+  $pattern = '^\s*' + [regex]::Escape($key) + '\s*='
+  $found = $false
+  $out = [System.Collections.ArrayList]::new()
+  foreach ($line in $lines) {
+    if ($line -match $pattern) {
+      [void]$out.Add("$key=$value")
+      $found = $true
+    } else {
+      [void]$out.Add($line)
+    }
+  }
+  if (-not $found) { [void]$out.Add("$key=$value") }
+  [System.IO.File]::WriteAllLines($path, $out.ToArray(), $utf8NoBom)
+}
 
 function Write-Section([string]$title) {
   Write-Host ""
@@ -59,6 +84,14 @@ if (-not (Test-Path $targetEnv)) {
   }
 }
 
+if ($CloudApiBaseUrl) {
+  $trimApi = $CloudApiBaseUrl.Trim().TrimEnd('/')
+  Update-EnvKeyValue $targetEnv 'CLOUD_API_BASE_URL' $trimApi
+}
+if ($AgentId) { Update-EnvKeyValue $targetEnv 'AGENT_ID' $AgentId.Trim() }
+if ($AgentSharedToken) { Update-EnvKeyValue $targetEnv 'AGENT_SHARED_TOKEN' $AgentSharedToken.Trim() }
+if ($LocalAgentToken) { Update-EnvKeyValue $targetEnv 'LOCAL_AGENT_TOKEN' $LocalAgentToken.Trim() }
+
 Write-Section 'Registering startup scheduled task'
 $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $escapedInstallDir = $InstallDir.Replace('"', '""')
@@ -83,5 +116,9 @@ if ($StartNow) {
 }
 
 Write-Host ''
-Write-Host 'Done. Edit .env values in install directory, then run:' -ForegroundColor Green
+if ($CloudApiBaseUrl -or $AgentId -or $AgentSharedToken) {
+  Write-Host 'Pre-filled .env from install parameters (IT). Employee: just use the PC on the same LAN as the device.' -ForegroundColor Green
+} else {
+  Write-Host 'IT: edit .env (CLOUD_API_BASE_URL, AGENT_ID, AGENT_SHARED_TOKEN) or reinstall with -CloudApiBaseUrl.' -ForegroundColor Yellow
+}
 Write-Host "Start-ScheduledTask -TaskName `"$TaskName`"" -ForegroundColor Green

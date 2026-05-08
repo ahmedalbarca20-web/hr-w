@@ -2,12 +2,30 @@
 
 This guide packages the LAN polling agent as a single Windows executable and installs it for auto-start.
 
+## للموظف (بدون إعداد تقني)
+
+- ثبّت الوكيل على جهاز ويندوز **على نفس شبكة جهاز البصمة (ZK)** (غالباً جهاز الاستقبال أو كمبيوتر ثابت في المكتب).
+- شغّل المثبّت أو سكربت التثبيت؛ لا حاجة لـ ngrok أو متغيرات من المتصفح.
+- افتح تطبيق الويب كالمعتاد من الرابط الذي يعطيه المسؤول.
+
+## للمسؤول / IT (مرة واحدة)
+
+- على **خادم الـ API** (مثل Vercel): اضبط `LOCAL_AGENT_URL` (نفق يشير لجهاز الوكيل) و`LOCAL_AGENT_TOKEN` بما يطابق `.env` على جهاز الوكيل.
+- عند توزيع الوكيل، يمكن **تعبئة `.env` تلقائياً** عبر معاملات التثبيت (انظر أدناه: `-CloudApiBaseUrl`, `-AgentId`, …) حتى لا يحرّر الموظف الملف يدوياً.
+- الواجهة على استضافة عامة تستخدم **relay تلقائياً** عبر الـ API؛ الموظف لا يضبط `VITE_LOCAL_AGENT_RELAY`.
+
 ## Fastest (one command)
 
 From `local-agent`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-hr-agent-exe-oneclick.ps1
+```
+
+IT can pre-fill the cloud API URL (optional):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-hr-agent-exe-oneclick.ps1 -CloudApiBaseUrl "https://your-app.vercel.app/api"
 ```
 
 This does all steps:
@@ -63,6 +81,15 @@ Recommended (no admin needed, per-user):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-hr-agent-exe.ps1 -PerUser -StartNow
+```
+
+Pre-fill `.env` from parameters (IT; avoids manual editing on the PC):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-hr-agent-exe.ps1 -PerUser -StartNow `
+  -CloudApiBaseUrl "https://your-app.vercel.app/api" `
+  -AgentId "office_1" `
+  -AgentSharedToken "same-as-backend"
 ```
 
 Alternative (Administrator, machine-wide):

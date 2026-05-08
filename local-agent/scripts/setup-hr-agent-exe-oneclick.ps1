@@ -1,6 +1,7 @@
 param(
   [switch]$Clean,
-  [switch]$PerUser = $true
+  [switch]$PerUser = $true,
+  [string]$CloudApiBaseUrl = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,6 +18,9 @@ Write-Host 'Step 2/2: Installing and starting scheduled task...' -ForegroundColo
 $installArgs = @('-ExecutionPolicy', 'Bypass', '-File', (Join-Path $scriptsDir 'install-hr-agent-exe.ps1'), '-StartNow')
 if ($PerUser) {
   $installArgs += '-PerUser'
+}
+if ($CloudApiBaseUrl) {
+  $installArgs += '-CloudApiBaseUrl', $CloudApiBaseUrl
 }
 powershell @installArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

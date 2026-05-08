@@ -1,4 +1,5 @@
 import api from './axios';
+import { shouldRelayLocalAgentToApi, friendlyLocalAgentRelayError } from '../utils/localAgentRelay';
 
 const DEFAULT_AGENT_EXECUTE = 'http://127.0.0.1:8099/execute';
 
@@ -10,15 +11,6 @@ function localAgentExecuteUrl() {
 
 function localAgentBrowserToken() {
 	return String(import.meta.env.VITE_LOCAL_AGENT_TOKEN || '').trim();
-}
-
-/**
- * When true, ZK calls go HR API → LOCAL_AGENT_URL (ngrok) instead of browser → 127.0.0.1.
- * Set VITE_LOCAL_AGENT_RELAY=1 on production if the UI is hosted remotely.
- */
-function useLocalAgentRelay() {
-	const v = String(import.meta.env.VITE_LOCAL_AGENT_RELAY || '').trim().toLowerCase();
-	return v === '1' || v === 'true' || v === 'always';
 }
 
 async function callLocalAgent(action, data = {}) {
@@ -42,7 +34,7 @@ async function callLocalAgent(action, data = {}) {
 		is_admin: data.is_admin,
 	};
 
-	if (useLocalAgentRelay()) {
+	if (shouldRelayLocalAgentToApi()) {
 		try {
 			const { data: wrap } = await api.post('/devices/local-agent/execute', body);
 			const inner = wrap?.data ?? wrap;
@@ -50,10 +42,13 @@ async function callLocalAgent(action, data = {}) {
 		} catch (e) {
 			const status = e.response?.status ?? 0;
 			const payload = e.response?.data;
-			const msg = payload?.error || payload?.message || e.message || 'Local agent relay failed';
 			return {
 				status,
-				data: payload?.data ?? payload ?? { ok: false, error: typeof msg === 'string' ? msg : 'Relay failed' },
+				data: {
+					ok: false,
+					errors: [{ message: friendlyLocalAgentRelayError(status, payload) }],
+					error: friendlyLocalAgentRelayError(status, payload),
+				},
 			};
 		}
 	}
@@ -62,13 +57,43 @@ async function callLocalAgent(action, data = {}) {
 	const tok = localAgentBrowserToken();
 	if (tok) headers.Authorization = `Bearer ${tok}`;
 
-	const resp = await fetch(localAgentExecuteUrl(), {
-		method: 'POST',
-		headers,
-		body: JSON.stringify(body),
-	});
-	const json = await resp.json().catch(() => null);
-	return { status: resp.status, data: json };
+	try {
+		const resp = await fetch(localAgentExecuteUrl(), {
+			method: 'POST',
+			headers,
+			body: JSON.stringify(body),
+		});
+		const json = await resp.json().catch(() => null);
+		if (!resp.ok) {
+			const msg = json?.error || json?.message || '';
+			return {
+				status: resp.status,
+				data: json && typeof json === 'object'
+					? { ...json, ok: json.ok === true ? true : false }
+					: {
+						ok: false,
+						error: msg || 'تعذّر الاتصال بالوكيل المحلي.',
+						errors: [{ message: msg || 'تعذّر الاتصال بالوكيل المحلي.' }],
+					},
+			};
+		}
+		return { status: resp.status, data: json };
+	} catch {
+		return {
+			status: 0,
+			data: {
+				ok: false,
+				error:
+					'تعذّر الاتصال ببرنامج «وكيل الشبكة» على هذه الحاسبة (المنفذ 8099). ثبّت الوكيل الذي زوّدك به المسؤول، أو افتح البرنامج من الحاسبة التي عليها الوكيل.',
+				errors: [
+					{
+						message:
+							'تعذّر الاتصال ببرنامج «وكيل الشبكة» على هذه الحاسبة. تأكد من تثبيت الوكيل وتشغيله.',
+					},
+				],
+			},
+		};
+	}
 }
 
 // ── Devices ──────────────────────────────────────────────────────────────────

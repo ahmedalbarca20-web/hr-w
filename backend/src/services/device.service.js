@@ -76,7 +76,7 @@ async function forwardLocalAgentExecute(body = {}) {
   if (!base) {
     throw Object.assign(
       new Error(
-        'LOCAL_AGENT_URL is not set on this API server. Set it to the reachable URL of the PC running the agent (e.g. ngrok), matching LOCAL_AGENT_TOKEN.',
+        'LOCAL_AGENT_URL is not set on this API server. Admin: set LOCAL_AGENT_URL (tunnel to the PC running the agent) and LOCAL_AGENT_TOKEN to match the agent. — لم يُضبط ربط الخادم بالوكيل: اضبط LOCAL_AGENT_URL و LOCAL_AGENT_TOKEN على الخادم.',
       ),
       { statusCode: 503, code: 'LOCAL_AGENT_NOT_CONFIGURED' },
     );
@@ -255,6 +255,11 @@ async function pushLogs(device, logs, rawBody) {
 
   const result = { total: logs.length, accepted: 0, duplicates: 0, unresolved: 0, errors: [] };
   const ALLOWED_EVENT_TYPES = new Set(['CHECK_IN', 'CHECK_OUT', 'VERIFY', 'ALARM', 'OTHER']);
+  const CARD_MAX_LEN = 80;
+  const pushConcurrency = Math.min(
+    48,
+    Math.max(1, parseInt(process.env.PUSH_LOG_CONCURRENCY || '24', 10) || 24),
+  );
 
   // Pre-build an employee lookup map: card_number → employee_id
   // Devices typically store an enrolment ID that matches employee_number.
@@ -279,7 +284,8 @@ async function pushLogs(device, logs, rawBody) {
   };
   const pinQuery = new Set();
   for (const l of logs) {
-    for (const k of expandEmployeeNumberKeys(l.card_number)) pinQuery.add(k);
+    const c = normalizeBioId(l.card_number).slice(0, CARD_MAX_LEN);
+    for (const k of expandEmployeeNumberKeys(c)) pinQuery.add(k);
   }
   const cardNumbers = [...pinQuery].filter(Boolean);
   const employees = cardNumbers.length
@@ -295,48 +301,46 @@ async function pushLogs(device, logs, rawBody) {
     }
   }
 
-  for (const log of logs) {
+  const markDuplicateRow = (card_number, event_type, event_time) =>
+    DeviceLog.update(
+      { is_duplicate: 1 },
+      { where: { device_id: device.id, card_number, event_type, event_time, is_duplicate: 0 } },
+    );
+
+  async function ingestOne(log) {
+    const card_number = normalizeBioId(log.card_number).slice(0, CARD_MAX_LEN);
+    const event_type_raw = String(log.event_type || '').trim().toUpperCase();
+    if (!event_type_raw) {
+      return { kind: 'validation_error', card_number, reason: 'Missing event_type (default values disabled)' };
+    }
+    if (!ALLOWED_EVENT_TYPES.has(event_type_raw)) {
+      return { kind: 'validation_error', card_number, reason: `Invalid event_type: ${event_type_raw}` };
+    }
+    const event_type = event_type_raw;
+    const event_time = new Date(log.event_time);
+    if (isNaN(event_time.getTime())) {
+      return { kind: 'validation_error', card_number, reason: 'Invalid event_time' };
+    }
+
+    const employee_id = empMap[card_number] ?? null;
+    const unresolved = !employee_id;
+
+    const raw_payload = { ...log, _source: rawBody?._meta ?? {} };
+    const isSurprise = Boolean(
+      activeSurpriseEvent
+      && event_time >= new Date(activeSurpriseEvent.starts_at)
+      && event_time <= new Date(activeSurpriseEvent.ends_at)
+    );
+    if (isSurprise) {
+      raw_payload.surprise_attendance = {
+        is_surprise: true,
+        event_id: activeSurpriseEvent.id,
+        starts_at: activeSurpriseEvent.starts_at,
+        ends_at: activeSurpriseEvent.ends_at,
+      };
+    }
+
     try {
-      const card_number = normalizeBioId(log.card_number);
-      const event_type_raw = String(log.event_type || '').trim().toUpperCase();
-      if (!event_type_raw) {
-        result.errors.push({ card_number, reason: 'Missing event_type (default values disabled)' });
-        continue;
-      }
-      if (!ALLOWED_EVENT_TYPES.has(event_type_raw)) {
-        result.errors.push({ card_number, reason: `Invalid event_type: ${event_type_raw}` });
-        continue;
-      }
-      const event_type  = event_type_raw;
-      const event_time  = new Date(log.event_time);
-
-      if (isNaN(event_time.getTime())) {
-        result.errors.push({ card_number, reason: 'Invalid event_time' });
-        continue;
-      }
-
-      const employee_id  = empMap[card_number] ?? null;
-      if (!employee_id) result.unresolved++;
-
-      const raw_payload  = { ...log, _source: rawBody?._meta ?? {} };
-      const isSurprise = Boolean(
-        activeSurpriseEvent
-        && event_time >= new Date(activeSurpriseEvent.starts_at)
-        && event_time <= new Date(activeSurpriseEvent.ends_at)
-      );
-      if (isSurprise) {
-        raw_payload.surprise_attendance = {
-          is_surprise: true,
-          event_id: activeSurpriseEvent.id,
-          starts_at: activeSurpriseEvent.starts_at,
-          ends_at: activeSurpriseEvent.ends_at,
-        };
-      }
-
-      // ── Deduplication ─────────────────────────────────────────────────────
-      // A log is a duplicate when the same (device, card, event_type, moment)
-      // already exists.  We use findOrCreate with the unique index fields so
-      // the DB itself is the final arbitrator (safe under concurrent pushes).
       const [, created] = await DeviceLog.findOrCreate({
         where: {
           device_id  : device.id,
@@ -361,17 +365,34 @@ async function pushLogs(device, logs, rawBody) {
       });
 
       if (created) {
-        result.accepted++;
-      } else {
-        // Row already existed — update its is_duplicate flag for visibility
-        await DeviceLog.update(
-          { is_duplicate: 1 },
-          { where: { device_id: device.id, card_number, event_type, event_time, is_duplicate: 0 } }
-        );
-        result.duplicates++;
+        return { kind: 'accepted', unresolved };
       }
+      await markDuplicateRow(card_number, event_type, event_time);
+      return { kind: 'duplicate', unresolved };
     } catch (err) {
-      result.errors.push({ card_number: log.card_number, reason: err.message });
+      if (err.name === 'SequelizeUniqueConstraintError') {
+        try {
+          await markDuplicateRow(card_number, event_type, event_time);
+        } catch (_) { /* ignore */ }
+        return { kind: 'duplicate', unresolved };
+      }
+      return { kind: 'error', card_number, reason: err.message || String(err) };
+    }
+  }
+
+  for (let i = 0; i < logs.length; i += pushConcurrency) {
+    const slice = logs.slice(i, i + pushConcurrency);
+    const outcomes = await Promise.all(slice.map((log) => ingestOne(log)));
+    for (const o of outcomes) {
+      if (o.kind === 'accepted') {
+        result.accepted += 1;
+        if (o.unresolved) result.unresolved += 1;
+      } else if (o.kind === 'duplicate') {
+        result.duplicates += 1;
+        if (o.unresolved) result.unresolved += 1;
+      } else if (o.kind === 'validation_error' || o.kind === 'error') {
+        result.errors.push({ card_number: o.card_number, reason: o.reason });
+      }
     }
   }
 
