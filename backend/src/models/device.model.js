@@ -26,6 +26,8 @@ Device.init(
     location        : { type: DataTypes.STRING(150), allowNull: true },
     /** IPv4, IPv6, or hostname — column name kept for compatibility. */
     ip_address      : { type: DataTypes.STRING(255), allowNull: true },
+    /** Optional ZK communication key (aka comm key / device password) required by some locked devices. */
+    comm_key        : { type: DataTypes.STRING(32), allowNull: true },
     firmware_version: { type: DataTypes.STRING(30),  allowNull: true },
 
     /**

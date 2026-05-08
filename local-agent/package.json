@@ -9,12 +9,16 @@
     "dev": "node polling-agent.js",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:restart": "pm2 restart zk-agent",
-    "pm2:logs": "pm2 logs zk-agent"
+    "pm2:logs": "pm2 logs zk-agent",
+    "build:exe": "pkg polling-agent.js --targets node18-win-x64 --output dist/hr-local-agent.exe"
   },
   "dependencies": {
     "axios": "^1.11.0",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "iconv-lite": "^0.7.0"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
   }
 }

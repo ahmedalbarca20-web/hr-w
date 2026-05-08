@@ -299,6 +299,12 @@ const connectDB = async () => {
         /* ignore if dialect cannot alter */
       }
     }
+    if (!cols.comm_key) {
+      await qi.addColumn('devices', 'comm_key', {
+        type: DataTypes.STRING(32),
+        allowNull: true,
+      });
+    }
   };
   const ensureWorkShiftColumns = async () => {
     let cols;

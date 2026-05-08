@@ -84,6 +84,7 @@ export default function SyncCenter() {
   const [hideDupZkNames, setHideDupZkNames] = useState(true);
   /** عند التفعيل: إعادة جلب القائمة مع حقل password من الجهاز، وإرجاعه في نتيجة الاستيراد (لا يُخزَّن في قاعدة الموظفين). */
   const [includeZkPassword, setIncludeZkPassword] = useState(false);
+  const [zkCommKey, setZkCommKey] = useState('');
 
   const fetchDevices = useCallback(async () => {
     setLoading(true);
@@ -114,6 +115,7 @@ export default function SyncCenter() {
           const agentStatus = await listUsersLocalAgent({
             ip_address: dev.ip_address,
             port: dev.port || 4370,
+            comm_key: zkCommKey.trim() || dev?.comm_key || undefined,
             include_password: withDevicePassword,
             timeout_ms: 120000,
           });
@@ -128,7 +130,10 @@ export default function SyncCenter() {
       if (agentData) {
         rows = Array.isArray(agentData.users) ? agentData.users : [];
       } else {
-        const { data } = await getDeviceZkUsers(deviceId, { include_password: withDevicePassword });
+        const { data } = await getDeviceZkUsers(deviceId, {
+          include_password: withDevicePassword,
+          comm_key: zkCommKey.trim() || undefined,
+        });
         const inner = data?.data;
         rows = Array.isArray(inner?.users) ? inner.users : [];
       }
@@ -231,6 +236,7 @@ export default function SyncCenter() {
     setPickerDevice(device);
     setSelectedUids([]);
     setIncludeZkPassword(false);
+    setZkCommKey(device?.comm_key || '');
     setSyncMsg('');
     loadDeviceZkUsers(device.id, false);
   };
@@ -249,7 +255,10 @@ export default function SyncCenter() {
     setZkPrivBulkBusy(true);
     setSyncMsg('');
     try {
-      await unlockZkDevice(pickerDevice.id, { socket_timeout_ms: 60000 });
+      await unlockZkDevice(pickerDevice.id, {
+        socket_timeout_ms: 60000,
+        comm_key: zkCommKey.trim() || undefined,
+      });
       setSyncMsg('تم إرسال تسلسل فتح الشاشة للجهاز. انتظرُ حتى 15 ثانية على الجهاز ثم جرّب الشاشة.');
       await loadDeviceZkUsers(pickerDevice.id, includeZkPassword);
     } catch (e) {
@@ -272,11 +281,21 @@ export default function SyncCenter() {
     setZkPrivBulkBusy(true);
     setSyncMsg('');
     try {
-      await unlockZkDevice(pickerDevice.id, { socket_timeout_ms: 60000 });
+      await unlockZkDevice(pickerDevice.id, {
+        socket_timeout_ms: 60000,
+        comm_key: zkCommKey.trim() || undefined,
+      });
       for (const uid of elevatedZkUidList) {
-        await setZkDeviceUserPrivilege(pickerDevice.id, { uid, is_admin: false });
+        await setZkDeviceUserPrivilege(pickerDevice.id, {
+          uid,
+          is_admin: false,
+          comm_key: zkCommKey.trim() || undefined,
+        });
       }
-      await unlockZkDevice(pickerDevice.id, { socket_timeout_ms: 60000 });
+      await unlockZkDevice(pickerDevice.id, {
+        socket_timeout_ms: 60000,
+        comm_key: zkCommKey.trim() || undefined,
+      });
       setSyncMsg(
         `تم إلغاء صلاحيات المدير عن ${elevatedZkUidList.length} مستخدم(ين) وفُتحت الشاشة بجلسة إضافية. انتظرُ 5–15 ثانية على الجهاز.`,
       );
@@ -293,10 +312,17 @@ export default function SyncCenter() {
     setZkPrivBusyUid(uid);
     setSyncMsg('');
     try {
-      await setZkDeviceUserPrivilege(pickerDevice.id, { uid, is_admin: isAdmin });
+      await setZkDeviceUserPrivilege(pickerDevice.id, {
+        uid,
+        is_admin: isAdmin,
+        comm_key: zkCommKey.trim() || undefined,
+      });
       if (!isAdmin) {
         try {
-          await unlockZkDevice(pickerDevice.id, { socket_timeout_ms: 60000 });
+          await unlockZkDevice(pickerDevice.id, {
+            socket_timeout_ms: 60000,
+            comm_key: zkCommKey.trim() || undefined,
+          });
         } catch (_) { /* قد يكون الجهاز مفتوحاً بالفعل */ }
       }
       setSyncMsg(
@@ -318,6 +344,7 @@ export default function SyncCenter() {
     try {
       const { data: wrap } = await importDeviceZkUsers(pickerDevice.id, {
         uids: selectedUids,
+        comm_key: zkCommKey.trim() || undefined,
         include_password: includeZkPassword,
       });
       const inner = wrap?.data;
@@ -375,6 +402,7 @@ export default function SyncCenter() {
           const agentStatus = await pullAttendanceLocalAgent({
             ip_address: dev.ip_address,
             port: dev.port || 4370,
+            comm_key: zkCommKey.trim() || dev?.comm_key || undefined,
             timeout_ms: 120000,
           });
           if (agentStatus.status === 200 && agentStatus.data?.ok) {
@@ -406,6 +434,7 @@ export default function SyncCenter() {
         const { data } = await importDeviceZkAttendance(devId, {
           date_from: procDate,
           date_to: procDateTo,
+          comm_key: zkCommKey.trim() || undefined,
           auto_process: attPullAutoProcess,
           overwrite_attendance: attOverwriteManual,
           max_records: 12000,
@@ -753,6 +782,15 @@ export default function SyncCenter() {
                     إظهار رمز PIN على الجهاز غير مفعّل لشركتك. يفعّله <strong>السوبر أدمن</strong> من شركات النظام ← خصائص العقد ← «عرض رمز جهاز البصمة (PIN)»، ثم أعد تسجيل الدخول أو حدّث الصفحة.
                   </p>
                 )}
+                <div className="mt-2">
+                  <label className="label text-xs">Comm Key للجهاز (اختياري)</label>
+                  <input
+                    className="input font-mono text-xs"
+                    value={zkCommKey}
+                    onChange={(e) => setZkCommKey(e.target.value)}
+                    placeholder="مثال: 12345"
+                  />
+                </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     type="button"

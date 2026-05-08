@@ -39,6 +39,7 @@ export default function DeviceForm() {
     name: '',
     ip_address: DEFAULT_DEVICE_IP,
     port: '4370',
+    comm_key: '',
     type: 'FINGERPRINT',
     serial_number: '',
     location: '',
@@ -81,6 +82,7 @@ export default function DeviceForm() {
           name: d.name || '',
           ip_address: d.ip_address || '',
           port: d.port || '4370',
+          comm_key: d.comm_key || '',
           type: d.type || 'FINGERPRINT',
           serial_number: d.serial_number || '',
           location: d.location || '',
@@ -107,7 +109,12 @@ export default function DeviceForm() {
     try {
       const tryLocalBrowserAgent = async () => {
         try {
-          const res = await probeLocalAgent({ device_ip: form.ip_address.trim(), port: zkPort, timeout_ms: 1200 });
+          const res = await probeLocalAgent({
+            device_ip: form.ip_address.trim(),
+            port: zkPort,
+            comm_key: form.comm_key?.trim() || undefined,
+            timeout_ms: 1200,
+          });
           if (res?.status === 200 && res.data?.ok) {
             const nextSerial = res.data.serial_number || form.serial_number || makeFallbackSerial(form.ip_address);
             setForm((p) => ({ ...p, serial_number: nextSerial, firmware_version: res.data.firmware_version || p.firmware_version }));
@@ -124,6 +131,7 @@ export default function DeviceForm() {
       const tryAgentProbe = async () => {
         const agentRes = await probeDeviceViaAgent({
           device_ip: form.ip_address.trim(),
+          comm_key: form.comm_key?.trim() || undefined,
           timeout_ms: 1200,
         });
         const agentPayload = unwrapZkPayload(agentRes);
@@ -183,6 +191,7 @@ export default function DeviceForm() {
       const zkRes = await probeZkSocket({
         ip_address: form.ip_address.trim(),
         port: zkPort,
+        comm_key: form.comm_key?.trim() || undefined,
         /** فحص سريع: تسلسل فقط (+ getInfo إن لزم) — مهلة أقصر؛ التفاصيل الكاملة من «مركز المزامنة». */
         minimal_probe: true,
         include_users: false,
@@ -251,6 +260,7 @@ export default function DeviceForm() {
         location: form.location,
         type: form.type,
         firmware_version: form.firmware_version,
+        comm_key: form.comm_key?.trim() || null,
         department_id: (() => {
           const raw = form.department_id;
           if (raw === '' || raw == null) return null;
@@ -346,6 +356,18 @@ export default function DeviceForm() {
             <input className="input font-mono" value={form.port} onChange={set('port')} placeholder="4370" />
           </Field>
         </div>
+
+        <Field label="Comm Key (اختياري)">
+          <input
+            className="input font-mono"
+            value={form.comm_key}
+            onChange={set('comm_key')}
+            placeholder="مثال: 12345"
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            بعض أجهزة ZKTeco المقفلة تتطلب هذا المفتاح قبل أوامر السحب (users / attendance).
+          </p>
+        </Field>
 
         <Field label={t('device.firmware', 'Firmware Version')}>
           <input className="input" value={form.firmware_version} onChange={set('firmware_version')} placeholder="e.g. v6.2.1" />

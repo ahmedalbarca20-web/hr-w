@@ -5,7 +5,17 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const iconv = require('iconv-lite');
-const zktecoSocket = require('../backend/src/services/zktecoSocket.service');
+let zktecoSocket = null;
+
+function getZktecoSocket() {
+  if (!zktecoSocket) {
+    // Lazy-load to keep probe-only builds (pkg exe) independent from backend files.
+    // list_users / pull_attendance still require backend service availability.
+    // eslint-disable-next-line global-require, import/no-dynamic-require
+    zktecoSocket = require('../backend/src/services/zktecoSocket.service');
+  }
+  return zktecoSocket;
+}
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -232,6 +242,7 @@ app.post('/execute', auth, async (req, res) => {
   }
 
   if (action === 'list_users') {
+    const zk = getZktecoSocket();
     const socketTimeoutMs = Number.isFinite(Number(req.body?.socket_timeout_ms))
       ? Math.min(120000, Math.max(8000, Number(req.body.socket_timeout_ms)))
       : 45000;
@@ -239,9 +250,10 @@ app.post('/execute', auth, async (req, res) => {
       ? Math.min(65535, Math.max(1024, Number(req.body.udp_local_port)))
       : 5000;
     const started = Date.now();
-    const result = await zktecoSocket.fetchZkUsersList({
+    const result = await zk.fetchZkUsersList({
       ip,
       port: Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+      comm_key: req.body?.comm_key,
       socket_timeout_ms: socketTimeoutMs,
       udp_local_port: udpLocalPort,
     });
@@ -264,13 +276,15 @@ app.post('/execute', auth, async (req, res) => {
   }
 
   if (action === 'pull_attendance') {
+    const zk = getZktecoSocket();
     const socketTimeoutMs = Number.isFinite(Number(req.body?.socket_timeout_ms))
       ? Math.min(120000, Math.max(8000, Number(req.body.socket_timeout_ms)))
       : 90000;
     const started = Date.now();
-    const result = await zktecoSocket.fetchAttendanceLogs({
+    const result = await zk.fetchAttendanceLogs({
       ip,
       port: Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+      comm_key: req.body?.comm_key,
       socket_timeout_ms: socketTimeoutMs,
     });
     log(result?.ok ? 'pull_attendance_success' : 'pull_attendance_fail', {

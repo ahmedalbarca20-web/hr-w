@@ -7,6 +7,7 @@ async function callLocalAgent(action, data = {}) {
 		action,
 		device_ip: data.device_ip || data.ip_address || data.ip,
 		port: data.port,
+		comm_key: data.comm_key,
 		timeout_ms: data.timeout_ms,
 		include_password: data.include_password,
 	};

@@ -6,6 +6,52 @@ const ZktecoJs = require('zkteco-js');
 require('../utils/zktecoJsUdpFallbackPatch').applyPatch();
 const { COMMANDS: ZK_COMMANDS } = require('zkteco-js/src/helper/command');
 
+function parseCommKeyRaw(v) {
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const n = Number.parseInt(s, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 0x7fffffff) return null;
+  return n;
+}
+
+function decodeMojibakeUtf8Latin1(s) {
+  const src = String(s || '');
+  if (!/[ØÙÚÛÇÐ]/.test(src)) return src;
+  try {
+    return Buffer.from(src, 'latin1').toString('utf8');
+  } catch {
+    return src;
+  }
+}
+
+function normalizeArabicText(v) {
+  if (v == null) return v;
+  const s = String(v).replace(/\0/g, '').trim();
+  if (!s) return s;
+  return decodeMojibakeUtf8Latin1(s);
+}
+
+function normalizeZkUsersRows(users) {
+  return (users || []).map((u) => {
+    if (!u || typeof u !== 'object') return u;
+    return {
+      ...u,
+      name: normalizeArabicText(u.name),
+      userId: normalizeArabicText(u.userId),
+      password: normalizeArabicText(u.password),
+    };
+  });
+}
+
+async function zkAuthWithCommKey(zk, commKeyRaw) {
+  const commKey = parseCommKeyRaw(commKeyRaw);
+  if (commKey == null) return;
+  const authPayload = Buffer.alloc(4);
+  authPayload.writeUInt32LE(commKey >>> 0, 0);
+  await zk.executeCmd(ZK_COMMANDS.CMD_AUTH, authPayload);
+}
+
 /**
  * zkteco-js throws custom `ZkError` objects: `{ err, command, ip }` — often no useful `.message` on the wrapper.
  * `e.err` may wrap another layer; the real Node `systemError` is usually at `e.err.err`.
@@ -213,6 +259,7 @@ async function probeSnapshot(opts) {
 
   try {
     await zk.createSocket();
+    await zkAuthWithCommKey(zk, opts.comm_key);
     result.ok = true;
     result.connection_type = zk.connectionType;
 
@@ -233,6 +280,7 @@ async function probeSnapshot(opts) {
       const rawUsers = await safe('getUsers', () => zk.getUsers());
       if (rawUsers !== null) {
         const { users, partialErr } = normalizeGetUsersResult(rawUsers);
+        const normalizedUsers = normalizeZkUsersRows(users);
         if (partialErr) {
           result.errors.push({
             step   : 'getUsers',
@@ -240,8 +288,8 @@ async function probeSnapshot(opts) {
             ...(errorCodeFromException(partialErr) ? { code: errorCodeFromException(partialErr) } : {}),
           });
         }
-        result.user_count_on_device = users.length;
-        result.user_sample = users.slice(0, max_users);
+        result.user_count_on_device = normalizedUsers.length;
+        result.user_sample = normalizedUsers.slice(0, max_users);
       }
     }
 
@@ -341,6 +389,7 @@ async function fetchAttendanceLogsOnce(opts, withDisable) {
 
   try {
     await zk.createSocket();
+    await zkAuthWithCommKey(zk, opts.comm_key);
     result.ok = true;
     result.connection_type = zk.connectionType;
 
@@ -370,7 +419,7 @@ async function fetchAttendanceLogsOnce(opts, withDisable) {
     const rawUsers = await safe('getUsers', () => zk.getUsers());
     if (rawUsers != null) {
       const { users, partialErr } = normalizeGetUsersResult(rawUsers);
-      result.device_users = users;
+      result.device_users = normalizeZkUsersRows(users);
       if (partialErr) {
         result.errors.push({
           step   : 'getUsers_after_attendance',
@@ -450,11 +499,12 @@ async function fetchZkUsersList(opts) {
 
   try {
     await zk.createSocket();
+    await zkAuthWithCommKey(zk, opts.comm_key);
     result.ok = true;
     result.connection_type = zk.connectionType;
     const rawUsers = await zk.getUsers();
     const { users, partialErr } = normalizeGetUsersResult(rawUsers);
-    result.users = users || [];
+    result.users = normalizeZkUsersRows(users || []);
     if (partialErr) {
       result.errors.push({
         step   : 'getUsers',
@@ -505,6 +555,7 @@ async function unlockZkDevice(opts) {
 
   try {
     await zk.createSocket();
+    await zkAuthWithCommKey(zk, opts.comm_key);
     result.connection_type = zk.connectionType;
     try {
       await zk.freeData();
@@ -572,6 +623,7 @@ async function setZkUserWrite(opts) {
 
   try {
     await zk.createSocket();
+    await zkAuthWithCommKey(zk, opts.comm_key);
     result.connection_type = zk.connectionType;
     await zkSafeEnableDevice(zk);
     const pin8Buf = zkResolvePin8(opts.pin8_b64, password);

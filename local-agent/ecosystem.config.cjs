@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'zk-agent',
-      script: './agent.js',
+      script: './polling-agent.js',
       cwd: __dirname,
       instances: 1,
       autorestart: true,

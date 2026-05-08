@@ -341,6 +341,13 @@ const deviceCreateSchema = z.object({
   serial_number   : z.string().min(1).max(80),
   location        : z.string().max(150).nullable().optional(),
   ip_address      : deviceOptionalNetworkHost.optional(),
+  comm_key: z.preprocess(
+    (v) => {
+      if (v === '' || v === null || v === undefined) return null;
+      return String(v).trim();
+    },
+    z.union([z.null(), z.string().max(32)])
+  ).optional(),
   department_id: z
     .preprocess((v) => {
       if (v === '') return null;
@@ -373,6 +380,13 @@ const deviceZkSocketProbeSchema = z.object({
   socket_timeout_ms: z.coerce.number().int().min(2000).max(60000).optional().default(4000),
   /** Omit to let the server pick a high random UDP port (avoids EADDRINUSE with fixed 5000). */
   udp_local_port: z.coerce.number().int().min(1024).max(65535).optional(),
+  comm_key: z.preprocess(
+    (v) => {
+      if (v === '' || v === null || v === undefined) return undefined;
+      return String(v).trim();
+    },
+    z.string().max(32).optional()
+  ),
   /** Only serial (+ optional getInfo if serial empty) — faster for «اختبار الاتصال» in the form. */
   minimal_probe: z.boolean().optional().default(false),
   include_users: z.boolean().optional().default(true),
@@ -393,6 +407,13 @@ const deviceZkSocketByDeviceSchema = z.object({
   port: z.coerce.number().int().min(1).max(65535).optional(),
   socket_timeout_ms: z.coerce.number().int().min(2000).max(60000).optional(),
   udp_local_port: z.coerce.number().int().min(1024).max(65535).optional(),
+  comm_key: z.preprocess(
+    (v) => {
+      if (v === '' || v === null || v === undefined) return undefined;
+      return String(v).trim();
+    },
+    z.string().max(32).optional()
+  ),
   include_users: z.boolean().optional(),
   max_users: z.coerce.number().int().min(1).max(500).optional(),
   include_attendance_size: z.boolean().optional(),
@@ -459,6 +480,13 @@ const deviceSyncUsersSchema = z.object({
 
 const deviceZkDeviceUsersQuerySchema = z.object({
   port              : z.coerce.number().int().min(1).max(65535).optional(),
+  comm_key: z.preprocess(
+    (v) => {
+      if (v === '' || v === null || v === undefined) return undefined;
+      return String(v).trim();
+    },
+    z.string().max(32).optional()
+  ),
   /** When true, request device keypad PIN — applied only if super admin or company feature `zk_device_pin`. */
   include_password  : zQueryBool.optional().default(false),
 });
@@ -466,6 +494,13 @@ const deviceZkDeviceUsersQuerySchema = z.object({
 const deviceZkImportUsersSchema = z.object({
   uids              : z.array(z.coerce.number().int().min(0)).min(1, 'Select at least one device user').max(200),
   port              : z.coerce.number().int().min(1).max(65535).optional(),
+  comm_key: z.preprocess(
+    (v) => {
+      if (v === '' || v === null || v === undefined) return undefined;
+      return String(v).trim();
+    },
+    z.string().max(32).optional()
+  ),
   /** When true, include PIN in import results — only if super admin or company feature `zk_device_pin`. */
   include_password  : z.boolean().optional().default(false),
 });
@@ -475,17 +510,38 @@ const deviceZkSetUserPrivilegeSchema = z.object({
   uid                : z.coerce.number().int().min(1).max(65535),
   is_admin           : z.boolean(),
   port               : z.coerce.number().int().min(1).max(65535).optional(),
+  comm_key: z.preprocess(
+    (v) => {
+      if (v === '' || v === null || v === undefined) return undefined;
+      return String(v).trim();
+    },
+    z.string().max(32).optional()
+  ),
   socket_timeout_ms  : z.coerce.number().int().min(8000).max(120000).optional(),
 });
 
 const deviceZkUnlockBodySchema = z.object({
   port               : z.coerce.number().int().min(1).max(65535).optional(),
+  comm_key: z.preprocess(
+    (v) => {
+      if (v === '' || v === null || v === undefined) return undefined;
+      return String(v).trim();
+    },
+    z.string().max(32).optional()
+  ),
   socket_timeout_ms  : z.coerce.number().int().min(5000).max(120000).optional(),
 });
 
 /** Pull ZK attendance buffer → device_logs (+ optional attendance processBulk). */
 const deviceZkImportAttendanceSchema = z.object({
   port                  : z.coerce.number().int().min(1).max(65535).optional(),
+  comm_key: z.preprocess(
+    (v) => {
+      if (v === '' || v === null || v === undefined) return undefined;
+      return String(v).trim();
+    },
+    z.string().max(32).optional()
+  ),
   date_from             : zDate.optional(),
   date_to               : zDate.optional(),
   max_records           : z.coerce.number().int().min(1).max(20000).optional().default(8000),

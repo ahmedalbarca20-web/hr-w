@@ -1010,7 +1010,7 @@ async function debugZkConnection(body) {
 async function readZkFromRegisteredDevice(device_id, company_id, overrides = {}) {
   const dev = await Device.findOne({
     where     : { id: device_id, company_id },
-    attributes: ['id', 'ip_address', 'name'],
+    attributes: ['id', 'ip_address', 'name', 'comm_key'],
   });
   if (!dev) throw notFound(device_id);
   const bridge = dtrBridgeBaseUrl();
@@ -1025,6 +1025,7 @@ async function readZkFromRegisteredDevice(device_id, company_id, overrides = {})
   return zktecoSocket.probeSnapshot({
     ip                       : host,
     port                     : overrides.port ?? 4370,
+    comm_key                 : overrides.comm_key ?? dev.comm_key ?? undefined,
     socket_timeout_ms        : overrides.socket_timeout_ms ?? 8000,
     udp_local_port           : regUdp,
     minimal_probe            : overrides.minimal_probe === true,
@@ -1052,7 +1053,7 @@ async function listZkUsersOnDevice(device_id, company_id, query = {}) {
   }
   const dev = await Device.findOne({
     where     : { id: device_id, company_id },
-    attributes: ['id', 'ip_address', 'name', 'status', 'serial_number'],
+    attributes: ['id', 'ip_address', 'name', 'status', 'serial_number', 'comm_key'],
   });
   if (!dev) throw notFound(device_id);
 
@@ -1092,6 +1093,7 @@ async function listZkUsersOnDevice(device_id, company_id, query = {}) {
           action: 'list_users',
           device_ip: dev.ip_address,
           port: query.port,
+          comm_key: query.comm_key ?? dev.comm_key ?? undefined,
           socket_timeout_ms: query.socket_timeout_ms,
           udp_local_port: query.udp_local_port,
         }),
@@ -1139,6 +1141,7 @@ async function listZkUsersOnDevice(device_id, company_id, query = {}) {
   const snap = await zktecoSocket.probeSnapshot({
     ip                      : host,
     port,
+    comm_key                : query.comm_key ?? dev.comm_key ?? undefined,
     socket_timeout_ms       : 15000,
     udp_local_port,
     include_users           : true,
@@ -1221,7 +1224,7 @@ async function setZkDeviceUserPrivilege(device_id, company_id, body = {}) {
 
   const dev = await Device.findOne({
     where     : { id: device_id, company_id },
-    attributes: ['id', 'ip_address', 'name', 'status', 'serial_number'],
+    attributes: ['id', 'ip_address', 'name', 'status', 'serial_number', 'comm_key'],
   });
   if (!dev) throw notFound(device_id);
   if (dev.status === 'OFFLINE') throw badReq('Cannot modify device: device is offline');
@@ -1232,6 +1235,7 @@ async function setZkDeviceUserPrivilege(device_id, company_id, body = {}) {
   await zktecoSocket.unlockZkDevice({
     ip                : host,
     port,
+    comm_key          : body.comm_key ?? dev.comm_key ?? undefined,
     socket_timeout_ms : Math.min(30000, socket_timeout_ms),
     udp_local_port    : 5000,
   });
@@ -1239,6 +1243,7 @@ async function setZkDeviceUserPrivilege(device_id, company_id, body = {}) {
   const listRes = await zktecoSocket.fetchZkUsersList({
     ip                : host,
     port,
+    comm_key          : body.comm_key ?? dev.comm_key ?? undefined,
     socket_timeout_ms,
     udp_local_port    : 5000,
   });
@@ -1257,6 +1262,7 @@ async function setZkDeviceUserPrivilege(device_id, company_id, body = {}) {
   const writeRes = await zktecoSocket.setZkUserWrite({
     ip                : host,
     port,
+    comm_key          : body.comm_key ?? dev.comm_key ?? undefined,
     socket_timeout_ms,
     uid,
     userId            : u.userId,
@@ -1299,7 +1305,7 @@ async function unlockDeviceZkSession(device_id, company_id, body = {}) {
 
   const dev = await Device.findOne({
     where     : { id: device_id, company_id },
-    attributes: ['id', 'ip_address', 'name', 'status', 'serial_number'],
+    attributes: ['id', 'ip_address', 'name', 'status', 'serial_number', 'comm_key'],
   });
   if (!dev) throw notFound(device_id);
   if (dev.status === 'OFFLINE') throw badReq('Cannot reach device: device is offline');
@@ -1309,6 +1315,7 @@ async function unlockDeviceZkSession(device_id, company_id, body = {}) {
   const res = await zktecoSocket.unlockZkDevice({
     ip                : host,
     port,
+    comm_key          : body.comm_key ?? dev.comm_key ?? undefined,
     socket_timeout_ms,
     udp_local_port    : 5000,
   });
@@ -1439,11 +1446,12 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
     auto_process = false,
     overwrite_attendance = true,
     socket_timeout_ms = 90000,
+    comm_key,
   } = options;
 
   const dev = await Device.findOne({
     where     : { id: device_id, company_id },
-    attributes: ['id', 'ip_address', 'name', 'status', 'mode', 'company_id', 'serial_number'],
+    attributes: ['id', 'ip_address', 'name', 'status', 'mode', 'company_id', 'serial_number', 'comm_key'],
   });
   if (!dev) throw notFound(device_id);
 
@@ -1494,6 +1502,7 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
           action: 'pull_attendance',
           device_ip: host,
           port: port != null && Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+          comm_key: comm_key ?? dev.comm_key ?? undefined,
           socket_timeout_ms,
         }),
         signal: controller.signal,
@@ -1516,6 +1525,7 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
       zkPull = await zktecoSocket.fetchAttendanceLogs({
         ip                : host,
         port              : port != null && Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+        comm_key          : comm_key ?? dev.comm_key ?? undefined,
         socket_timeout_ms,
       });
     } finally {
@@ -1525,6 +1535,7 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
     zkPull = await zktecoSocket.fetchAttendanceLogs({
       ip                : host,
       port              : port != null && Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370,
+      comm_key          : comm_key ?? dev.comm_key ?? undefined,
       socket_timeout_ms,
     });
   }
