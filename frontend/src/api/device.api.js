@@ -1,19 +1,70 @@
 import api from './axios';
 
-const LOCAL_AGENT_URL = 'http://127.0.0.1:8099/execute';
+const DEFAULT_AGENT_EXECUTE = 'http://127.0.0.1:8099/execute';
+
+function localAgentExecuteUrl() {
+	const u = String(import.meta.env.VITE_LOCAL_AGENT_URL || '').trim().replace(/\/+$/, '');
+	if (!u) return DEFAULT_AGENT_EXECUTE;
+	return u.includes('/execute') ? u : `${u}/execute`;
+}
+
+function localAgentBrowserToken() {
+	return String(import.meta.env.VITE_LOCAL_AGENT_TOKEN || '').trim();
+}
+
+/**
+ * When true, ZK calls go HR API → LOCAL_AGENT_URL (ngrok) instead of browser → 127.0.0.1.
+ * Set VITE_LOCAL_AGENT_RELAY=1 on production if the UI is hosted remotely.
+ */
+function useLocalAgentRelay() {
+	const v = String(import.meta.env.VITE_LOCAL_AGENT_RELAY || '').trim().toLowerCase();
+	return v === '1' || v === 'true' || v === 'always';
+}
 
 async function callLocalAgent(action, data = {}) {
+	const device_ip = data.device_ip || data.ip_address || data.ip;
+	const port = data.port;
+	const comm_key = data.comm_key;
+	const timeout_ms = data.timeout_ms;
+	const socket_timeout_ms = data.socket_timeout_ms ?? data.timeout_ms;
+
 	const body = {
 		action,
-		device_ip: data.device_ip || data.ip_address || data.ip,
-		port: data.port,
-		comm_key: data.comm_key,
-		timeout_ms: data.timeout_ms,
+		device_ip,
+		ip_address: device_ip,
+		port,
+		comm_key,
+		timeout_ms,
+		socket_timeout_ms,
+		udp_local_port: data.udp_local_port,
 		include_password: data.include_password,
+		uid: data.uid,
+		is_admin: data.is_admin,
 	};
-	const resp = await fetch(LOCAL_AGENT_URL, {
+
+	if (useLocalAgentRelay()) {
+		try {
+			const { data: wrap } = await api.post('/devices/local-agent/execute', body);
+			const inner = wrap?.data ?? wrap;
+			return { status: 200, data: inner };
+		} catch (e) {
+			const status = e.response?.status ?? 0;
+			const payload = e.response?.data;
+			const msg = payload?.error || payload?.message || e.message || 'Local agent relay failed';
+			return {
+				status,
+				data: payload?.data ?? payload ?? { ok: false, error: typeof msg === 'string' ? msg : 'Relay failed' },
+			};
+		}
+	}
+
+	const headers = { 'Content-Type': 'application/json' };
+	const tok = localAgentBrowserToken();
+	if (tok) headers.Authorization = `Bearer ${tok}`;
+
+	const resp = await fetch(localAgentExecuteUrl(), {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
+		headers,
 		body: JSON.stringify(body),
 	});
 	const json = await resp.json().catch(() => null);

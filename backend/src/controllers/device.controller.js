@@ -22,6 +22,7 @@ const {
   deviceZkSetUserPrivilegeSchema,
   deviceZkUnlockBodySchema,
   deviceZkImportAttendanceSchema,
+  localAgentRelaySchema,
 } = require('../utils/validators');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -402,6 +403,16 @@ const probeDeviceGateway = asyncHandler(async (req, res) => {
   sendSuccess(res, data);
 });
 
+/** Authenticated relay: browser → API → LOCAL_AGENT_URL/execute (ZK list/pull/unlock/privilege). */
+const relayLocalAgentExecute = asyncHandler(async (req, res) => {
+  const parsed = localAgentRelaySchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return sendError(res, parsed.error.errors[0]?.message, 422, 'VALIDATION_ERROR');
+  }
+  const data = await svc.forwardLocalAgentExecute(parsed.data);
+  sendSuccess(res, data);
+});
+
 
 const importZkUsersToEmployeesDirect = asyncHandler(async (req, res) => {
   const id = parseId(req, res); if (id === null) return;
@@ -430,7 +441,7 @@ const importZkAttendancesDirect = asyncHandler(async (req, res) => {
 module.exports = {
   importZkUsersToEmployeesDirect,
   importZkAttendancesDirect,
-  listDevices, getDevice, listEmployeeOptions, probeConnection, probeDeviceGateway, probeZkSocket, debugZkConnection, readZkFromDevice, listZkDeviceUsers, importZkUsersToEmployees, setZkDeviceUserPrivilege, unlockDeviceZkSession, importZkAttendances, createDevice, updateDevice, deactivateDevice, rotateApiKey,
+  listDevices, getDevice, listEmployeeOptions, probeConnection, probeDeviceGateway, relayLocalAgentExecute, probeZkSocket, debugZkConnection, readZkFromDevice, listZkDeviceUsers, importZkUsersToEmployees, setZkDeviceUserPrivilege, unlockDeviceZkSession, importZkAttendances, createDevice, updateDevice, deactivateDevice, rotateApiKey,
   getPushConfig, testDeviceIngest,
   push, heartbeat,
   listLogs, getLog, reprocessLog, reResolveLogs,

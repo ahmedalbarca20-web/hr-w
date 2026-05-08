@@ -14,6 +14,7 @@
  *   POST   /                       Register a new device (returns api_key once)
  *   GET    /employee-options       Active employees for sync picker (devices feature only)
  *   POST   /probe-connection       Test HTTP reachability & try to read serial (LAN)
+ *   POST   /local-agent/execute   Relay ZK actions to LOCAL_AGENT_URL (optional; see VITE_LOCAL_AGENT_RELAY)
  *   POST   /probe-zk-socket       ZK TCP/UDP via zkteco-js (serial, users sample, etc.)
  *   POST   /debug-zk-connection   ZK + HTTP + env + optional DTR bio-sync (diagnostics)
  *   POST   /:id/zk-socket-read     Same as probe-zk-socket using saved device ip_address
@@ -63,6 +64,7 @@ r.get   ('/',           requireRole(...HR_ADMIN), ctrl.listDevices);
 r.post  ('/',           requireRole('ADMIN'),     ctrl.createDevice);
 r.get   ('/employee-options', requireRole(...HR_ADMIN), ctrl.listEmployeeOptions);
 r.post  ('/probe-connection', requireRole(...HR_ADMIN), ctrl.probeConnection);
+r.post  ('/local-agent/execute', requireRole(...HR_ADMIN), ctrl.relayLocalAgentExecute);
 r.post  ('/probe-zk-socket', requireRole(...HR_ADMIN), ctrl.probeZkSocket);
 r.post  ('/debug-zk-connection', requireRole(...HR_ADMIN), ctrl.debugZkConnection);
 r.post  ('/:id/sync-users', requireRole(...HR_ADMIN), ctrl.syncUsers);

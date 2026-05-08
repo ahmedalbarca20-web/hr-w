@@ -59,6 +59,51 @@ async function executeLocalAgentAction(body, { timeoutMs = 60000 } = {}) {
   }
 }
 
+const LOCAL_AGENT_RELAY_ACTIONS = new Set([
+  'probe',
+  'list_users',
+  'pull_attendance',
+  'unlock_device',
+  'set_user_privilege',
+]);
+
+/**
+ * Authenticated HR UI → this API → LOCAL_AGENT_URL/execute (same payloads as the local agent).
+ * Use when the browser cannot call http://127.0.0.1:8099 (optional path; set VITE_LOCAL_AGENT_RELAY=1 on the frontend).
+ */
+async function forwardLocalAgentExecute(body = {}) {
+  const base = localAgentBaseUrl();
+  if (!base) {
+    throw Object.assign(
+      new Error(
+        'LOCAL_AGENT_URL is not set on this API server. Set it to the reachable URL of the PC running the agent (e.g. ngrok), matching LOCAL_AGENT_TOKEN.',
+      ),
+      { statusCode: 503, code: 'LOCAL_AGENT_NOT_CONFIGURED' },
+    );
+  }
+  const action = String(body.action || '').trim().toLowerCase();
+  if (!LOCAL_AGENT_RELAY_ACTIONS.has(action)) {
+    throw badReq(`Unsupported local agent action: ${action}`);
+  }
+  const ip = String(body.device_ip || body.ip_address || '').trim();
+  if (!ip) {
+    throw badReq('device_ip or ip_address is required');
+  }
+  const forwardBody = { ...body, action, device_ip: ip };
+  const tSock = Number(body.socket_timeout_ms ?? body.timeout_ms);
+  let budget;
+  if (Number.isFinite(tSock)) {
+    budget = Math.min(200000, Math.max(12000, tSock + 15000));
+  } else if (action === 'pull_attendance') {
+    budget = 110000;
+  } else if (action === 'list_users' || action === 'set_user_privilege') {
+    budget = 65000;
+  } else {
+    budget = 35000;
+  }
+  return executeLocalAgentAction(forwardBody, { timeoutMs: budget });
+}
+
 /** Base URL of [dtr.zkteco.api](https://github.com/itechxcellence/dtr.zkteco.api) on the LAN (or ngrok). When set, ZK reads use HTTP snapshot instead of TCP from this process. */
 function dtrBridgeBaseUrl() {
   return String(process.env.DTR_ZKTECO_API_URL || '').trim().replace(/\/$/, '');
@@ -1739,6 +1784,7 @@ module.exports = {
   listEmployeesForDevicePicker,
   probeDeviceConnection,
   probeDeviceViaAgentGateway,
+  forwardLocalAgentExecute,
   probeZkSocket,
   debugZkConnection,
   readZkFromRegisteredDevice,

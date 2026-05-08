@@ -639,6 +639,30 @@ const pushWebPushUnsubscribeSchema = z.object({
   endpoint: z.string().url().max(4096),
 });
 
+/** Browser → API → LOCAL_AGENT_URL/execute (ZK actions on the LAN). */
+const localAgentRelaySchema = z.object({
+  action: z.enum(['probe', 'list_users', 'pull_attendance', 'unlock_device', 'set_user_privilege']),
+  device_ip: deviceProbeNetworkHost.optional(),
+  ip_address: deviceProbeNetworkHost.optional(),
+  port: z.coerce.number().int().min(1).max(65535).optional(),
+  comm_key: z.preprocess(
+    (v) => {
+      if (v === '' || v === null || v === undefined) return undefined;
+      return String(v).trim();
+    },
+    z.string().max(32).optional(),
+  ),
+  timeout_ms: z.coerce.number().int().min(200).max(180000).optional(),
+  socket_timeout_ms: z.coerce.number().int().min(2000).max(180000).optional(),
+  udp_local_port: z.coerce.number().int().min(1024).max(65535).optional(),
+  include_password: z.boolean().optional(),
+  uid: z.coerce.number().int().min(1).max(65535).optional(),
+  is_admin: z.boolean().optional(),
+}).refine(
+  (d) => Boolean(String(d.device_ip || d.ip_address || '').trim()),
+  { message: 'device_ip or ip_address is required', path: ['device_ip'] },
+);
+
 module.exports = {
   zId,
   zDate,
@@ -696,6 +720,7 @@ module.exports = {
   deviceZkSetUserPrivilegeSchema,
   deviceZkUnlockBodySchema,
   deviceZkImportAttendanceSchema,
+  localAgentRelaySchema,
   // Work Shifts
   workShiftCreateSchema,
   workShiftUpdateSchema,

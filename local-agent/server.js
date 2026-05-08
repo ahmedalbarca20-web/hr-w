@@ -243,8 +243,9 @@ app.post('/execute', auth, async (req, res) => {
 
   if (action === 'list_users') {
     const zk = getZktecoSocket();
-    const socketTimeoutMs = Number.isFinite(Number(req.body?.socket_timeout_ms))
-      ? Math.min(120000, Math.max(8000, Number(req.body.socket_timeout_ms)))
+    const socketRaw = req.body?.socket_timeout_ms ?? req.body?.timeout_ms;
+    const socketTimeoutMs = Number.isFinite(Number(socketRaw))
+      ? Math.min(120000, Math.max(8000, Number(socketRaw)))
       : 45000;
     const udpLocalPort = Number.isFinite(Number(req.body?.udp_local_port))
       ? Math.min(65535, Math.max(1024, Number(req.body.udp_local_port)))
@@ -277,8 +278,9 @@ app.post('/execute', auth, async (req, res) => {
 
   if (action === 'pull_attendance') {
     const zk = getZktecoSocket();
-    const socketTimeoutMs = Number.isFinite(Number(req.body?.socket_timeout_ms))
-      ? Math.min(120000, Math.max(8000, Number(req.body.socket_timeout_ms)))
+    const socketRawPull = req.body?.socket_timeout_ms ?? req.body?.timeout_ms;
+    const socketTimeoutMs = Number.isFinite(Number(socketRawPull))
+      ? Math.min(180000, Math.max(8000, Number(socketRawPull)))
       : 90000;
     const started = Date.now();
     const result = await zk.fetchAttendanceLogs({
@@ -309,8 +311,9 @@ app.post('/execute', auth, async (req, res) => {
 
   if (action === 'unlock_device') {
     const zk = getZktecoSocket();
-    const socketTimeoutMs = Number.isFinite(Number(req.body?.socket_timeout_ms))
-      ? Math.min(120000, Math.max(8000, Number(req.body.socket_timeout_ms)))
+    const socketRawUn = req.body?.socket_timeout_ms ?? req.body?.timeout_ms;
+    const socketTimeoutMs = Number.isFinite(Number(socketRawUn))
+      ? Math.min(120000, Math.max(8000, Number(socketRawUn)))
       : 50000;
     const started = Date.now();
     const result = await zk.unlockZkDevice({
@@ -342,8 +345,9 @@ app.post('/execute', auth, async (req, res) => {
     if (!Number.isInteger(uid) || uid < 1) {
       return res.status(422).json({ ok: false, error: 'uid is required and must be >= 1' });
     }
-    const socketTimeoutMs = Number.isFinite(Number(req.body?.socket_timeout_ms))
-      ? Math.min(120000, Math.max(8000, Number(req.body.socket_timeout_ms)))
+    const socketRawPriv = req.body?.socket_timeout_ms ?? req.body?.timeout_ms;
+    const socketTimeoutMs = Number.isFinite(Number(socketRawPriv))
+      ? Math.min(120000, Math.max(8000, Number(socketRawPriv)))
       : 45000;
     const targetRole = isAdmin ? 14 : 0;
     const started = Date.now();

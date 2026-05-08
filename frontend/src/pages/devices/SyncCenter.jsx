@@ -114,10 +114,11 @@ export default function SyncCenter() {
         try {
           const agentStatus = await listUsersLocalAgent({
             ip_address: dev.ip_address,
-            port: dev.port || 4370,
+            port: 4370,
             comm_key: zkCommKey.trim() || dev?.comm_key || undefined,
             include_password: withDevicePassword,
             timeout_ms: 120000,
+            socket_timeout_ms: 120000,
           });
           if (agentStatus.status === 200 && agentStatus.data?.ok) {
             agentData = agentStatus.data;
@@ -146,7 +147,7 @@ export default function SyncCenter() {
       setDeviceUsersLoading(false);
     }
     return rows;
-  }, [devices]);
+  }, [devices, zkCommKey]);
 
   const zkNameDupCounts = useMemo(() => {
     const m = new Map();
@@ -401,9 +402,10 @@ export default function SyncCenter() {
         try {
           const agentStatus = await pullAttendanceLocalAgent({
             ip_address: dev.ip_address,
-            port: dev.port || 4370,
+            port: 4370,
             comm_key: zkCommKey.trim() || dev?.comm_key || undefined,
             timeout_ms: 120000,
+            socket_timeout_ms: 120000,
           });
           if (agentStatus.status === 200 && agentStatus.data?.ok) {
             agentPayload = agentStatus.data;
