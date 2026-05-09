@@ -31,6 +31,7 @@ const AnnouncementList = lazy(() => import('../pages/announcements/AnnouncementL
 const UserManagement   = lazy(() => import('../pages/users/UserManagement'));
 const ShiftList        = lazy(() => import('../pages/shifts/ShiftList'));
 const ProcessCenter    = lazy(() => import('../pages/process/ProcessCenter'));
+const Reports          = lazy(() => import('../pages/reports/Reports'));
 
 // Employee Self-Service
 const EmployeeProfile  = lazy(() => import('../pages/employees/EmployeeProfile'));
@@ -140,6 +141,15 @@ export default function AppRoutes() {
             <FeatureRoute feature="process">
               <RoleRoute roles={['ADMIN', 'HR']}>
                 <ProcessCenter />
+              </RoleRoute>
+            </FeatureRoute>
+          </Private>
+        } />
+        <Route path="/reports" element={
+          <Private>
+            <FeatureRoute feature="reports">
+              <RoleRoute roles={['ADMIN', 'HR', 'SUPER_ADMIN']}>
+                <Reports />
               </RoleRoute>
             </FeatureRoute>
           </Private>

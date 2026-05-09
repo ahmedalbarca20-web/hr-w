@@ -49,6 +49,7 @@ const NAV = [
       { key: 'users', path: '/users', icon: 'manage_accounts', feature: 'users' },
       { key: 'shifts', path: '/shifts', icon: 'schedule', feature: 'shifts' },
       { key: 'process', path: '/process', icon: 'engineering', feature: 'process' },
+      { key: 'reports', path: '/reports', icon: 'assessment', feature: 'reports' },
     ],
   },
   { key: 'settings', path: '/settings', icon: 'settings' },
