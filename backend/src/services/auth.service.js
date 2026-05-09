@@ -40,6 +40,14 @@ const normalizeCompanyCodeInput = (value) => toLatinDigits(value)
   .replace(/\s+/g, '')
   .replace(/[^\w-]/g, '');
 
+const requireUserRole = (user) => {
+  if (user?.role && typeof user.role.name === 'string' && user.role.name.trim()) return;
+  const err = new Error('Account role is not configured');
+  err.statusCode = 403;
+  err.code = 'ACCOUNT_ROLE_MISSING';
+  throw err;
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -70,6 +78,7 @@ const saveRefreshToken = async (user, rawRefreshToken) => {
 };
 
 const buildSession = async (user) => {
+  requireUserRole(user);
   const companyFeatures = user.company_id
     ? await getCompanyEnabledFeatures(user.company_id)
     : [];
@@ -120,7 +129,7 @@ const login = async (email, password, company_id = null, company_password = null
 
   let user = await User.findOne({
     where  : whereClause,
-    include: [{ model: Role, as: 'role' }],
+    include: [{ model: Role, as: 'role', required: true }],
   });
 
   // If a company scope was provided but no tenant row matches, still allow
@@ -128,7 +137,7 @@ const login = async (email, password, company_id = null, company_password = null
   if (!user && tenantScoped) {
     user = await User.findOne({
       where: { email: normalizedEmail, is_active: 1 },
-      include: [{ model: Role, as: 'role', where: { name: SUPER_ADMIN_ROLE } }],
+      include: [{ model: Role, as: 'role', where: { name: SUPER_ADMIN_ROLE }, required: true }],
     });
   }
 
@@ -202,7 +211,7 @@ const employeeLogin = async ({ employee_code, password, company_code = null }) =
 
   const user = await User.findOne({
     where: { employee_id: employee.id, is_active: 1 },
-    include: [{ model: Role, as: 'role' }],
+    include: [{ model: Role, as: 'role', required: true }],
   });
 
   if (!user) {
@@ -249,7 +258,7 @@ const refreshTokens = async (rawRefreshToken) => {
   // 2. Load user from DB
   const user = await User.findOne({
     where  : { id: decoded.sub, is_active: 1 },
-    include: [{ model: Role, as: 'role' }],
+    include: [{ model: Role, as: 'role', required: true }],
   });
 
   if (!user || !user.refresh_token) {
