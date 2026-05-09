@@ -155,8 +155,9 @@ app.use((err, _req, res, _next) => {
   // Service-layer errors carry statusCode + code
   const statusCode = err.statusCode || 500;
   const code       = err.code       || ERROR_CODES.INTERNAL_ERROR;
-  const message    = statusCode < 500
-    ? err.message
+  const gatewayStyle = [502, 503, 504].includes(Number(statusCode));
+  const message = statusCode < 500 || gatewayStyle
+    ? (err.message || 'Request failed')
     : 'An unexpected error occurred';
 
   if (statusCode >= 500) {

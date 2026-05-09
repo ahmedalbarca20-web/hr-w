@@ -59,6 +59,20 @@ async function executeLocalAgentAction(body, { timeoutMs = 60000 } = {}) {
       });
     }
     return payload;
+  } catch (e) {
+    const isAbort = e && (e.name === 'AbortError' || /aborted|abort/i.test(String(e.message || '')));
+    if (isAbort) {
+      throw Object.assign(new Error('Local agent request timeout'), {
+        statusCode: 504,
+        code: 'LOCAL_AGENT_TIMEOUT',
+      });
+    }
+    if (e && e.statusCode) throw e;
+    const msg = String(e?.message || e || 'fetch failed');
+    throw Object.assign(
+      new Error(`Cannot reach LOCAL_AGENT_URL from this server. ${msg}`),
+      { statusCode: 502, code: 'LOCAL_AGENT_UNREACHABLE' },
+    );
   } finally {
     clearTimeout(t);
   }
@@ -1851,7 +1865,14 @@ async function probeDeviceViaAgentGateway(body) {
       err.code = 'LOCAL_AGENT_TIMEOUT';
       throw err;
     }
-    throw e;
+    if (e && e.statusCode) throw e;
+    const msg = String(e?.message || e || 'fetch failed');
+    const err = new Error(
+      `Cannot reach LOCAL_AGENT_URL from this server (check tunnel/VPN and that the agent is running). ${msg}`,
+    );
+    err.statusCode = 502;
+    err.code = 'LOCAL_AGENT_UNREACHABLE';
+    throw err;
   } finally {
     clearTimeout(t);
   }
