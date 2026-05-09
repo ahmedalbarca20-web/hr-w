@@ -20,3 +20,7 @@ Rollback
 Env required for queue mode
 - Server: AGENT_SHARED_TOKEN, ALLOWED_AGENT_IDS (comma list)
 - Agent PC: CLOUD_API_BASE_URL, AGENT_ID, AGENT_SHARED_TOKEN, LOCAL_AGENT_PORT, LOCAL_AGENT_TOKEN (optional; localhost /execute works without token in permissive mode)
+
+Vercel + private device IPs (192.168.x)
+- Set on the API project (same place as DATABASE_URL): LOCAL_AGENT_URL (HTTPS tunnel to the LAN PC) and LOCAL_AGENT_TOKEN matching local-agent .env.
+- Without them, production/Vercel returns 503 LOCAL_AGENT_NOT_CONFIGURED for ZK reads on private IPs (fail-fast).

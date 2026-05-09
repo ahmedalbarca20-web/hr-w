@@ -36,6 +36,25 @@ function isPrivateLanHost(host) {
   return /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.|127\.)/.test(h);
 }
 
+/**
+ * Vercel/production cannot open TCP to RFC1918. Fail fast with 503 instead of ETIMEDOUT.
+ * Dev (non-Vercel, non-production) still allows direct zkteco-js from a laptop on the LAN.
+ */
+function requireAgentForPrivateLanZk(host) {
+  const h = String(host || '').trim();
+  if (!h || !isPrivateLanHost(h)) return;
+  if (localAgentBaseUrl()) return;
+  if (dtrBridgeBaseUrl()) return;
+  const prodLike = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+  if (!prodLike) return;
+  throw Object.assign(
+    new Error(
+      'LOCAL_AGENT_URL and LOCAL_AGENT_TOKEN (or AGENT_TOKEN) must be set: the device uses a private LAN IP and this API runs in the cloud. Set a tunnel (e.g. Cloudflare) to the PC running local-agent on the same LAN as the device. — اضبط LOCAL_AGENT_URL و LOCAL_AGENT_TOKEN على Vercel ليشيرا إلى نفق يصل لوكيل الشبكة بجانب جهاز البصمة.',
+    ),
+    { statusCode: 503, code: 'LOCAL_AGENT_NOT_CONFIGURED' },
+  );
+}
+
 async function executeLocalAgentAction(body, { timeoutMs = 60000 } = {}) {
   const base = localAgentBaseUrl();
   if (!base) return null;
@@ -921,6 +940,7 @@ async function probeZkSocket(body) {
   if (bridge) {
     return dtrZkBridge.probeSnapshotFromBridge(bridge, body);
   }
+  requireAgentForPrivateLanZk(body.ip_address);
   return zktecoSocket.probeSnapshot({
     ip                       : body.ip_address,
     port                     : body.port,
@@ -1168,6 +1188,7 @@ async function readZkFromRegisteredDevice(device_id, company_id, overrides = {})
   if (bridge) {
     return dtrZkBridge.probeSnapshotFromBridge(bridge, overrides);
   }
+  requireAgentForPrivateLanZk(host);
   const regUdp = Number.isFinite(Number(overrides.udp_local_port))
     ? Math.min(65535, Math.max(1024, Number(overrides.udp_local_port)))
     : undefined;
@@ -1261,9 +1282,10 @@ async function listZkUsersOnDevice(device_id, company_id, query = {}) {
     };
   }
 
-  if (dev.status === 'OFFLINE') throw badReq('Cannot read device users: device is offline');
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+  requireAgentForPrivateLanZk(host);
+  if (dev.status === 'OFFLINE') throw badReq('Cannot read device users: device is offline');
   const port = query.port != null && Number.isFinite(Number(query.port)) && Number(query.port) > 0
     ? Number(query.port)
     : 4370;
@@ -1603,6 +1625,7 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
       attendance_retry_without_disable: false,
     };
   } else {
+    requireAgentForPrivateLanZk(host);
     zkPull = await zktecoSocket.fetchAttendanceLogs({
       ip                : host,
       port              : pullPort,
