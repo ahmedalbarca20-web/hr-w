@@ -1,2 +1,0 @@
-// Seed default admin user
-
