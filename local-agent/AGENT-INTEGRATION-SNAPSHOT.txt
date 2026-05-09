@@ -1,0 +1,25 @@
+HR Local Agent — integration snapshot (rollback reference)
+Date: 2026-05-09
+
+Purpose
+- LAN-only ZK devices: extend job queue + polling agent so pull_attendance (and other ZK actions) run via the same /execute handler as the UI.
+- Optional: HR UI (Sync Center) can enqueue pull_attendance jobs; optional auto-enqueue from agent via env.
+
+Files touched
+- backend/src/controllers/agentJob.controller.js — POLLABLE_ACTIONS, createDeviceAgentJob, enqueueAgentJob, submitResult ingest hook
+- backend/src/routes/index.js — POST /device-agent/jobs, POST /agent/enqueue-job
+- local-agent/polling-agent.js — non-probe jobs → POST localhost /execute; optional AGENT_AUTO_PULL_*
+- local-agent/.env.example — documented new env vars
+- frontend/src/api/device.api.js — createDeviceAgentJob, getAgentJobStatus
+- frontend/src/pages/devices/SyncCenter.jsx — queue agent id field + “سحب عبر الوكيل” button
+
+Frontend optional env
+- VITE_AGENT_ID — default value for “معرف الوكيل” in Sync Center (still saved in sessionStorage when edited).
+
+Rollback
+- Revert the above files to previous git revision.
+- Remove routes device-agent/jobs and agent/enqueue-job if API clients depend on old behaviour only.
+
+Env required for queue mode
+- Server: AGENT_SHARED_TOKEN, ALLOWED_AGENT_IDS (comma list)
+- Agent PC: CLOUD_API_BASE_URL, AGENT_ID, AGENT_SHARED_TOKEN, LOCAL_AGENT_PORT, LOCAL_AGENT_TOKEN (optional; localhost /execute works without token in permissive mode)

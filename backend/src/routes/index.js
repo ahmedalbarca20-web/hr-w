@@ -46,6 +46,17 @@ router.get('/agent/jobs', agentJobController.pollJobs);
 router.post('/agent/job-result', agentJobController.submitResult);
 router.get('/job-status/:id', agentJobController.getStatus);
 
+/** Queue ZK/LAN work for a polling local agent (JWT). Body: { agent_id, action, device_id?, ... } */
+router.post(
+  '/device-agent/jobs',
+  authenticate,
+  requireFeature('devices'),
+  requireRole('ADMIN', 'HR', 'SUPER_ADMIN'),
+  agentJobController.createDeviceAgentJob,
+);
+
+/** Same job queue; Bearer AGENT_SHARED_TOKEN (for the LAN PC / scripts). */
+router.post('/agent/enqueue-job', agentJobController.enqueueAgentJob);
 
 /** ZKTeco iClock / ADMS default path — same handler as POST /devices/push (SN + key in query or body). */
 router.post('/iclock/cdata', authenticateDevice, deviceController.push);

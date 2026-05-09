@@ -9,6 +9,8 @@ import {
   importDeviceZkAttendance,
   importDeviceZkAttendanceDirect,
   importDeviceZkUsersDirect,
+  createDeviceAgentJob,
+  getAgentJobStatus,
   pullAttendanceLocalAgent,
   listUsersLocalAgent,
   readZkFromDevice,
@@ -85,6 +87,17 @@ export default function SyncCenter() {
   /** عند التفعيل: إعادة جلب القائمة مع حقل password من الجهاز، وإرجاعه في نتيجة الاستيراد (لا يُخزَّن في قاعدة الموظفين). */
   const [includeZkPassword, setIncludeZkPassword] = useState(false);
   const [zkCommKey, setZkCommKey] = useState('');
+  const defaultQueueAgentId = typeof import.meta.env.VITE_AGENT_ID === 'string' ? import.meta.env.VITE_AGENT_ID : '';
+  const [queueAgentId, setQueueAgentId] = useState(
+    () => (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('hr_agent_queue_id')) || defaultQueueAgentId,
+  );
+  const [attQueueLoading, setAttQueueLoading] = useState(null);
+
+  useEffect(() => {
+    if (queueAgentId && typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('hr_agent_queue_id', queueAgentId);
+    }
+  }, [queueAgentId]);
 
   const fetchDevices = useCallback(async () => {
     setLoading(true);
@@ -476,7 +489,63 @@ export default function SyncCenter() {
       setAttPullLoading(null);
     }
   };
-  
+
+  const sleepMs = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+  /** سحب عبر طابور الوكيل (مناسب لشبكة LAN بدون اتصال مباشر من الخادم للأجهزة) */
+  const pullZkAttendanceQueued = async (devId) => {
+    const aid = queueAgentId.trim();
+    if (!aid) {
+      setSyncMsg('أدخل معرف الوكيل (مثل office_1) لمطابقة AGENT_ID على حاسبة الوكيل و ALLOWED_AGENT_IDS على الخادم.');
+      return;
+    }
+    if (attQueueLoading != null) return;
+    setAttQueueLoading(devId);
+    setSyncMsg('');
+    try {
+      const { data: wrap } = await createDeviceAgentJob({
+        agent_id: aid,
+        action: 'pull_attendance',
+        device_id: devId,
+        socket_timeout_ms: 120000,
+        auto_ingest: true,
+        date_from: procDate,
+        date_to: procDateTo,
+        auto_process: attPullAutoProcess,
+        overwrite_attendance: attOverwriteManual,
+        max_records: 12000,
+      });
+      const inner = wrap?.data;
+      const jobId = inner?.job_id;
+      if (!jobId) {
+        setSyncMsg('لم يُرجع الخادم رقم مهمة.');
+        return;
+      }
+      setSyncMsg(`مهمة ${jobId} — في انتظار الوكيل على الشبكة…`);
+      for (let attempt = 0; attempt < 90; attempt += 1) {
+        await sleepMs(2000);
+        const { data: st } = await getAgentJobStatus(jobId);
+        const row = st?.data;
+        const status = row?.status;
+        if (status === 'success' || status === 'failed' || status === 'timeout') {
+          if (status === 'success') {
+            setSyncMsg(`اكتملت المهمة ${jobId}. إن كان «دمج السجلات» مفعّلاً على الخادم فتم استيراد البصمات ضمن النطاق الزمني المحدد أعلاه.`);
+          } else {
+            const hint = row?.error || row?.result;
+            setSyncMsg(`انتهت المهمة ${jobId} بحالة ${status}${hint ? ` — ${typeof hint === 'string' ? hint : JSON.stringify(hint)}` : ''}`);
+          }
+          await fetchDevices();
+          return;
+        }
+      }
+      setSyncMsg(`المهمة ${jobId} ما زالت قيد التنفيذ — راقب لاحقاً أو زد مهلة الاستعلام.`);
+    } catch (e) {
+      setSyncMsg(extractErrorText(e, 'تعذر إنشاء مهمة الوكيل'));
+    } finally {
+      setAttQueueLoading(null);
+    }
+  };
+
   const runReResolve = async () => {
     setProcLoading(true);
     setSyncMsg('');
@@ -583,15 +652,25 @@ export default function SyncCenter() {
 
       {/* Sync panel */}
       <div className="bg-white rounded-xl shadow-card overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-gray-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="font-semibold text-gray-800">{t('device.sync_center', 'Sync Center')}</h2>
             <p className="text-xs text-gray-400 mt-0.5">{devices.length} registered devices</p>
           </div>
-          <button onClick={syncAll} className="btn-primary gap-2 text-sm">
-            <span className="material-icons-round text-base">sync</span>
-            {t('device.sync_all', 'Sync All')}
-          </button>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+            <input
+              type="text"
+              className="input text-xs max-w-full sm:max-w-[200px]"
+              placeholder="معرف الوكيل (مثل office_1)"
+              value={queueAgentId}
+              onChange={(e) => setQueueAgentId(e.target.value)}
+              aria-label="Agent id for queued jobs"
+            />
+            <button onClick={syncAll} className="btn-primary gap-2 text-sm flex-shrink-0">
+              <span className="material-icons-round text-base">sync</span>
+              {t('device.sync_all', 'Sync All')}
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -683,6 +762,18 @@ export default function SyncCenter() {
                       {attPullLoading === d.id ? 'sync' : 'download'}
                     </span>
                     {t('device.pull_attendance', 'سحب البصمات')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => pullZkAttendanceQueued(d.id)}
+                    disabled={!isActive || attQueueLoading === d.id}
+                    className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-sky-200 text-sky-900 hover:bg-sky-50 disabled:opacity-40"
+                    title="إنشاء مهمة سحب يتولاها وكيل LAN المتصل بالسحابة (مناسب إذا الخادم لا يصل لعناوين 192.168)"
+                  >
+                    <span className={`material-icons-round text-base ${attQueueLoading === d.id ? 'animate-spin' : ''}`}>
+                      {attQueueLoading === d.id ? 'sync' : 'cloud_queue'}
+                    </span>
+                    سحب عبر الوكيل
                   </button>
                   <button
                     type="button"
