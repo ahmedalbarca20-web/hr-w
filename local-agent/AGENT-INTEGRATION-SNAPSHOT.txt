@@ -11,10 +11,7 @@ Files touched
 - local-agent/polling-agent.js — non-probe jobs → POST localhost /execute; optional AGENT_AUTO_PULL_*
 - local-agent/.env.example — documented new env vars
 - frontend/src/api/device.api.js — createDeviceAgentJob, getAgentJobStatus
-- frontend/src/pages/devices/SyncCenter.jsx — queue agent id field + “سحب عبر الوكيل” button
-
-Frontend optional env
-- VITE_AGENT_ID — default value for “معرف الوكيل” in Sync Center (still saved in sessionStorage when edited).
+- frontend/src/pages/devices/SyncCenter.jsx — single “من الجهاز” button (live read + attendance pull); queue UI removed.
 
 Rollback
 - Revert the above files to previous git revision.

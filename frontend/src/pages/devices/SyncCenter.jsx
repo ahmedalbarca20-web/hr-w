@@ -9,8 +9,6 @@ import {
   importDeviceZkAttendance,
   importDeviceZkAttendanceDirect,
   importDeviceZkUsersDirect,
-  createDeviceAgentJob,
-  getAgentJobStatus,
   pullAttendanceLocalAgent,
   listUsersLocalAgent,
   readZkFromDevice,
@@ -77,7 +75,6 @@ export default function SyncCenter() {
   const [zkPrivBusyUid, setZkPrivBusyUid] = useState(null);
   const [zkPrivBulkBusy, setZkPrivBulkBusy] = useState(false);
   const [zkLiveById, setZkLiveById] = useState({});
-  const [zkLiveLoading, setZkLiveLoading] = useState(null);
   const [attPullLoading, setAttPullLoading] = useState(null);
   const [attPullAutoProcess, setAttPullAutoProcess] = useState(true);
   /** بعد السحب: استبدال الحضور اليدوي لنفس اليوم بما يطابق البصمات */
@@ -87,17 +84,6 @@ export default function SyncCenter() {
   /** عند التفعيل: إعادة جلب القائمة مع حقل password من الجهاز، وإرجاعه في نتيجة الاستيراد (لا يُخزَّن في قاعدة الموظفين). */
   const [includeZkPassword, setIncludeZkPassword] = useState(false);
   const [zkCommKey, setZkCommKey] = useState('');
-  const defaultQueueAgentId = typeof import.meta.env.VITE_AGENT_ID === 'string' ? import.meta.env.VITE_AGENT_ID : '';
-  const [queueAgentId, setQueueAgentId] = useState(
-    () => (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('hr_agent_queue_id')) || defaultQueueAgentId,
-  );
-  const [attQueueLoading, setAttQueueLoading] = useState(null);
-
-  useEffect(() => {
-    if (queueAgentId && typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('hr_agent_queue_id', queueAgentId);
-    }
-  }, [queueAgentId]);
 
   const fetchDevices = useCallback(async () => {
     setLoading(true);
@@ -384,30 +370,26 @@ export default function SyncCenter() {
     });
   };
 
-  const pullZkLive = async (devId) => {
-    if (zkLiveLoading) return;
-    setZkLiveLoading(devId);
-    setSyncMsg('');
-    try {
-      const res = await readZkFromDevice(devId, {});
-      const z = unwrapZkPayload(res);
-      setZkLiveById((p) => ({ ...p, [devId]: zkLiveSummaryLine(z) }));
-      setSyncMsg(zkLiveSummaryLine(z));
-    } catch (e) {
-      const msg = e.response?.data?.error || e.message || 'تعذّر قراءة الجهاز';
-      setZkLiveById((p) => ({ ...p, [devId]: msg }));
-      setSyncMsg(msg);
-    } finally {
-      setZkLiveLoading(null);
-    }
-  };
-
-  /** سحب سجلات البصمة من ذاكرة الجهاز → السجلات الخام، ثم (اختياري) معالجة الحضور */
-  const pullZkAttendance = async (devId) => {
+  /**
+   * زر واحد: قراءة حيّة من الجهاز (ملخص) ثم سحب البصمات ضمن نطاق التاريخ و(اختياري) معالجة الحضور.
+   */
+  const syncZkFromDevice = async (devId) => {
     if (attPullLoading) return;
     setAttPullLoading(devId);
     setSyncMsg('');
     try {
+      try {
+        const res = await readZkFromDevice(devId, {});
+        const z = unwrapZkPayload(res);
+        const line = zkLiveSummaryLine(z);
+        setZkLiveById((p) => ({ ...p, [devId]: line }));
+        setSyncMsg(line);
+      } catch (e) {
+        const msg = e.response?.data?.error || e.message || 'تعذّر القراءة المبدئية من الجهاز';
+        setZkLiveById((p) => ({ ...p, [devId]: msg }));
+        setSyncMsg(msg);
+      }
+
       const dev = devices.find((d) => d.id === devId);
 
       let agentPayload = null;
@@ -487,62 +469,6 @@ export default function SyncCenter() {
       setSyncMsg(msg);
     } finally {
       setAttPullLoading(null);
-    }
-  };
-
-  const sleepMs = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
-
-  /** سحب عبر طابور الوكيل (مناسب لشبكة LAN بدون اتصال مباشر من الخادم للأجهزة) */
-  const pullZkAttendanceQueued = async (devId) => {
-    const aid = queueAgentId.trim();
-    if (!aid) {
-      setSyncMsg('أدخل معرف الوكيل (مثل office_1) لمطابقة AGENT_ID على حاسبة الوكيل و ALLOWED_AGENT_IDS على الخادم.');
-      return;
-    }
-    if (attQueueLoading != null) return;
-    setAttQueueLoading(devId);
-    setSyncMsg('');
-    try {
-      const { data: wrap } = await createDeviceAgentJob({
-        agent_id: aid,
-        action: 'pull_attendance',
-        device_id: devId,
-        socket_timeout_ms: 120000,
-        auto_ingest: true,
-        date_from: procDate,
-        date_to: procDateTo,
-        auto_process: attPullAutoProcess,
-        overwrite_attendance: attOverwriteManual,
-        max_records: 12000,
-      });
-      const inner = wrap?.data;
-      const jobId = inner?.job_id;
-      if (!jobId) {
-        setSyncMsg('لم يُرجع الخادم رقم مهمة.');
-        return;
-      }
-      setSyncMsg(`مهمة ${jobId} — في انتظار الوكيل على الشبكة…`);
-      for (let attempt = 0; attempt < 90; attempt += 1) {
-        await sleepMs(2000);
-        const { data: st } = await getAgentJobStatus(jobId);
-        const row = st?.data;
-        const status = row?.status;
-        if (status === 'success' || status === 'failed' || status === 'timeout') {
-          if (status === 'success') {
-            setSyncMsg(`اكتملت المهمة ${jobId}. إن كان «دمج السجلات» مفعّلاً على الخادم فتم استيراد البصمات ضمن النطاق الزمني المحدد أعلاه.`);
-          } else {
-            const hint = row?.error || row?.result;
-            setSyncMsg(`انتهت المهمة ${jobId} بحالة ${status}${hint ? ` — ${typeof hint === 'string' ? hint : JSON.stringify(hint)}` : ''}`);
-          }
-          await fetchDevices();
-          return;
-        }
-      }
-      setSyncMsg(`المهمة ${jobId} ما زالت قيد التنفيذ — راقب لاحقاً أو زد مهلة الاستعلام.`);
-    } catch (e) {
-      setSyncMsg(extractErrorText(e, 'تعذر إنشاء مهمة الوكيل'));
-    } finally {
-      setAttQueueLoading(null);
     }
   };
 
@@ -652,25 +578,15 @@ export default function SyncCenter() {
 
       {/* Sync panel */}
       <div className="bg-white rounded-xl shadow-card overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-gray-800">{t('device.sync_center', 'Sync Center')}</h2>
             <p className="text-xs text-gray-400 mt-0.5">{devices.length} registered devices</p>
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
-            <input
-              type="text"
-              className="input text-xs max-w-full sm:max-w-[200px]"
-              placeholder="معرف الوكيل (مثل office_1)"
-              value={queueAgentId}
-              onChange={(e) => setQueueAgentId(e.target.value)}
-              aria-label="Agent id for queued jobs"
-            />
-            <button onClick={syncAll} className="btn-primary gap-2 text-sm flex-shrink-0">
-              <span className="material-icons-round text-base">sync</span>
-              {t('device.sync_all', 'Sync All')}
-            </button>
-          </div>
+          <button onClick={syncAll} className="btn-primary gap-2 text-sm">
+            <span className="material-icons-round text-base">sync</span>
+            {t('device.sync_all', 'Sync All')}
+          </button>
         </div>
 
         {loading ? (
@@ -753,39 +669,15 @@ export default function SyncCenter() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => pullZkAttendance(d.id)}
+                    onClick={() => syncZkFromDevice(d.id)}
                     disabled={!isActive || attPullLoading === d.id}
                     className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-emerald-200 text-emerald-800 hover:bg-emerald-50 disabled:opacity-40"
-                    title={`سحب بصمات يوم ${procDate} من الجهاز إلى السجلات الخام`}
+                    title={`قراءة من الجهاز ثم سحب البصمات (${procDate} → ${procDateTo}) إلى السجلات الخام`}
                   >
                     <span className={`material-icons-round text-base ${attPullLoading === d.id ? 'animate-spin' : ''}`}>
-                      {attPullLoading === d.id ? 'sync' : 'download'}
+                      {attPullLoading === d.id ? 'sync' : 'sync_alt'}
                     </span>
-                    {t('device.pull_attendance', 'سحب البصمات')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => pullZkAttendanceQueued(d.id)}
-                    disabled={!isActive || attQueueLoading === d.id}
-                    className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-sky-200 text-sky-900 hover:bg-sky-50 disabled:opacity-40"
-                    title="إنشاء مهمة سحب يتولاها وكيل LAN المتصل بالسحابة (مناسب إذا الخادم لا يصل لعناوين 192.168)"
-                  >
-                    <span className={`material-icons-round text-base ${attQueueLoading === d.id ? 'animate-spin' : ''}`}>
-                      {attQueueLoading === d.id ? 'sync' : 'cloud_queue'}
-                    </span>
-                    سحب عبر الوكيل
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => pullZkLive(d.id)}
-                    disabled={!isActive || zkLiveLoading === d.id || d.status === 'OFFLINE'}
-                    className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-violet-200 text-violet-800 hover:bg-violet-50 disabled:opacity-40"
-                    title="قراءة مباشرة من الجهاز (بروتوكول ZK)"
-                  >
-                    <span className={`material-icons-round text-base ${zkLiveLoading === d.id ? 'animate-spin' : ''}`}>
-                      {zkLiveLoading === d.id ? 'sync' : 'fingerprint'}
-                    </span>
-                    {t('device.from_device', 'من الجهاز')}
+                    من الجهاز
                   </button>
                 </div>
               );

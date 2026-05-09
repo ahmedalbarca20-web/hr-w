@@ -108,9 +108,6 @@ export const probeDeviceConnection = (data) => api.post('/devices/probe-connecti
 export const scanZkRange = (data) => api.post('/devices/scan-zk-range', data || {});
 /** Local-network relay probe via backend + local agent. Preferred for private LAN device checks. */
 export const probeDeviceViaAgent = (data) => api.post('/probe-device', data);
-/** Queue ZK/LAN work for polling local agent (JWT). Body: { agent_id, action, device_id?, ... } */
-export const createDeviceAgentJob = (data) => api.post('/device-agent/jobs', data);
-export const getAgentJobStatus = (jobId) => api.get(`/job-status/${jobId}`);
 /** Try calling the local agent directly from the browser (localhost). Returns { status, data } or throws. */
 export const probeLocalAgent = (data) => callLocalAgent('probe', data);
 /** ZK binary protocol (zkteco-js) — TCP/UDP; optional fields: socket_timeout_ms, udp_local_port, include_users, max_users */
