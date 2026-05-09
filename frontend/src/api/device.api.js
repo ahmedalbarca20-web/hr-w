@@ -104,6 +104,8 @@ export const getDevice = (id) => api.get(`/devices/${id}`);
 export const createDevice = (data) => api.post('/devices', data);
 /** Legacy HTTP probe (web panel). Prefer `probeZkSocket` for ZKTeco; kept for HYBRID / Fingertic fallback. */
 export const probeDeviceConnection = (data) => api.post('/devices/probe-connection', data);
+/** Scan IPv4 range and return reachable ZK devices. */
+export const scanZkRange = (data) => api.post('/devices/scan-zk-range', data || {});
 /** Local-network relay probe via backend + local agent. Preferred for private LAN device checks. */
 export const probeDeviceViaAgent = (data) => api.post('/probe-device', data);
 /** Try calling the local agent directly from the browser (localhost). Returns { status, data } or throws. */

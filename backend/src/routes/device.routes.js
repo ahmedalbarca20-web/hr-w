@@ -64,6 +64,7 @@ r.get   ('/',           requireRole(...HR_ADMIN), ctrl.listDevices);
 r.post  ('/',           requireRole('ADMIN'),     ctrl.createDevice);
 r.get   ('/employee-options', requireRole(...HR_ADMIN), ctrl.listEmployeeOptions);
 r.post  ('/probe-connection', requireRole(...HR_ADMIN), ctrl.probeConnection);
+r.post  ('/scan-zk-range', requireRole(...HR_ADMIN), ctrl.scanZkRange);
 r.post  ('/local-agent/execute', requireRole(...HR_ADMIN), ctrl.relayLocalAgentExecute);
 r.post  ('/probe-zk-socket', requireRole(...HR_ADMIN), ctrl.probeZkSocket);
 r.post  ('/debug-zk-connection', requireRole(...HR_ADMIN), ctrl.debugZkConnection);

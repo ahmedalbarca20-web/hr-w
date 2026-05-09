@@ -9,6 +9,7 @@ import {
   probeLocalAgent,
   probeDeviceConnection,
   probeZkSocket,
+  scanZkRange,
 } from '../../api/device.api';
 import { listDepartments } from '../../api/department.api';
 import { applyZkSnapshotToForm, extractZkSerialFromSnapshot, unwrapZkPayload, zkFailureMessage } from '../../lib/deviceZk';
@@ -54,6 +55,10 @@ export default function DeviceForm() {
   const [testMessage,  setTestMessage]  = useState('');
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState(null);
+  const [rangeScanLoading, setRangeScanLoading] = useState(false);
+  const [rangeFrom, setRangeFrom] = useState('1');
+  const [rangeTo, setRangeTo] = useState('254');
+  const [rangeHits, setRangeHits] = useState([]);
   /** On failed ZK probe, holds raw payload for debugging (optional JSON block). */
   const [zkDebug, setZkDebug] = useState(null);
   const saveLockRef = useRef(false);
@@ -95,6 +100,63 @@ export default function DeviceForm() {
   }, [id, isEdit]);
 
   const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
+
+  const rangePrefixFromHost = () => {
+    const ip = String(form.ip_address || '').trim();
+    const m = /^(\d+)\.(\d+)\.(\d+)\.\d+$/.exec(ip);
+    if (!m) return '';
+    return `${m[1]}.${m[2]}.${m[3]}`;
+  };
+
+  const handleRangeScan = async () => {
+    const prefix = rangePrefixFromHost();
+    if (!prefix) {
+      setTestResult('error');
+      setTestMessage('اكتب IP بصيغة IPv4 أولاً (مثال 192.168.1.20) حتى نفحص الرينج.');
+      return;
+    }
+    const a = Number(rangeFrom);
+    const b = Number(rangeTo);
+    if (!Number.isInteger(a) || !Number.isInteger(b) || a < 1 || b > 254 || b < a) {
+      setTestResult('error');
+      setTestMessage('حدود الرينج غير صحيحة: from يجب أن يكون <= to وبين 1 و 254.');
+      return;
+    }
+    setRangeScanLoading(true);
+    setRangeHits([]);
+    setTestResult(null);
+    setTestMessage('');
+    try {
+      const { data } = await scanZkRange({
+        from_ip: `${prefix}.${a}`,
+        to_ip: `${prefix}.${b}`,
+        port: Number(form.port) || 4370,
+        socket_timeout_ms: 2200,
+        comm_key: form.comm_key?.trim() || undefined,
+      });
+      const inner = data?.data || data;
+      const hits = Array.isArray(inner?.matches) ? inner.matches : [];
+      setRangeHits(hits);
+      if (hits.length > 0) {
+        const first = hits[0];
+        setForm((p) => ({
+          ...p,
+          ip_address: first.ip || p.ip_address,
+          serial_number: first.serial_number || p.serial_number || makeFallbackSerial(first.ip || p.ip_address),
+        }));
+        setTestResult('success');
+        setTestMessage(`تم العثور على ${hits.length} جهاز ضمن الرينج، وتم اختيار ${first.ip} تلقائياً.`);
+      } else {
+        setTestResult('error');
+        setTestMessage('ماكو جهاز بصمة مستجيب ضمن الرينج المحدد.');
+      }
+    } catch (e) {
+      setTestResult('error');
+      setTestMessage(e?.response?.data?.error || e.message || 'فشل فحص الرينج.');
+    } finally {
+      setRangeScanLoading(false);
+    }
+  };
 
   /** LAN probe via backend relay/local agent, then zkteco-js and HTTP fallback if needed. */
   const handleTest = async () => {
@@ -356,6 +418,32 @@ export default function DeviceForm() {
             <input className="input font-mono" value={form.port} onChange={set('port')} placeholder="4370" />
           </Field>
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <Field label="Range From">
+            <input className="input font-mono" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} placeholder="1" />
+          </Field>
+          <Field label="Range To">
+            <input className="input font-mono" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} placeholder="254" />
+          </Field>
+          <div className="sm:col-span-2 flex items-end">
+            <button
+              type="button"
+              onClick={handleRangeScan}
+              disabled={rangeScanLoading}
+              className="btn-ghost gap-2 text-sm border border-indigo-200 text-indigo-900"
+            >
+              <span className={`material-icons-round text-base ${rangeScanLoading ? 'animate-spin' : ''}`}>
+                {rangeScanLoading ? 'sync' : 'radar'}
+              </span>
+              {rangeScanLoading ? 'جاري فحص الرينج…' : `فحص Range (${rangePrefixFromHost() || 'x.x.x'}.x)`}
+            </button>
+          </div>
+        </div>
+        {rangeHits.length > 0 && (
+          <p className="text-xs text-indigo-700 bg-indigo-50 rounded px-3 py-2">
+            تم العثور على: {rangeHits.slice(0, 8).map((h) => h.ip).join('، ')}{rangeHits.length > 8 ? ' ...' : ''}
+          </p>
+        )}
 
         <Field label="Comm Key (اختياري)">
           <input

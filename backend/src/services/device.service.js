@@ -919,6 +919,78 @@ async function probeZkSocket(body) {
   });
 }
 
+function ipv4ToInt(ip) {
+  const p = String(ip || '').trim().split('.').map((n) => Number(n));
+  if (p.length !== 4 || p.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+  return (((p[0] * 256 + p[1]) * 256 + p[2]) * 256 + p[3]) >>> 0;
+}
+
+function intToIpv4(v) {
+  const n = Number(v) >>> 0;
+  return `${(n >>> 24) & 255}.${(n >>> 16) & 255}.${(n >>> 8) & 255}.${n & 255}`;
+}
+
+/** Scan a local IPv4 range and return reachable ZK endpoints. */
+async function scanZkRange({ from_ip, to_ip, port = 4370, socket_timeout_ms = 2500, comm_key } = {}) {
+  const from = ipv4ToInt(from_ip);
+  const to = ipv4ToInt(to_ip);
+  if (from == null || to == null) throw badReq('from_ip and to_ip must be valid IPv4');
+  if (to < from) throw badReq('to_ip must be greater than or equal to from_ip');
+  const count = (to - from) + 1;
+  if (count > 256) throw badReq('IP range too large; max 256 addresses per scan');
+
+  const checked = [];
+  const matches = [];
+  const timeout = Math.min(6000, Math.max(800, Number(socket_timeout_ms) || 2500));
+  const targetPort = Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370;
+
+  for (let n = from; n <= to; n += 1) {
+    const ip = intToIpv4(n);
+    let ok = false;
+    let serial_number = null;
+    let message = '';
+    let source = null;
+    try {
+      let r;
+      if (localAgentBaseUrl()) {
+        r = await executeLocalAgentAction({
+          action: 'list_users',
+          device_ip: ip,
+          ip_address: ip,
+          port: targetPort,
+          socket_timeout_ms: Math.max(3000, timeout),
+        }, { timeoutMs: Math.min(18000, Math.max(6000, timeout + 6000)) });
+      } else {
+        r = await probeDeviceConnection({
+          ip_address: ip,
+          port: targetPort,
+          quick: true,
+        });
+      }
+      ok = Boolean(r?.ok);
+      serial_number = r?.serial_number ? String(r.serial_number).trim() : null;
+      message = r?.errors?.[0]?.message || r?.message || '';
+      source = r?.source || r?.connection_type || null;
+    } catch (e) {
+      message = String(e?.message || e || '');
+    }
+    const row = { ip, ok, serial_number, message, source };
+    checked.push(row);
+    if (ok) matches.push(row);
+  }
+
+  return {
+    from_ip,
+    to_ip,
+    port: targetPort,
+    socket_timeout_ms: timeout,
+    scanned: checked.length,
+    reachable: matches.length,
+    matches,
+    checked,
+  };
+}
+
 /** One-shot diagnostics: env + ZK path + HTTP probe + optional DTR bio-sync (same body family as probe-zk-socket). */
 async function debugZkConnection(body) {
   const started = Date.now();
@@ -1800,6 +1872,7 @@ module.exports = {
   probeDeviceViaAgentGateway,
   forwardLocalAgentExecute,
   probeZkSocket,
+  scanZkRange,
   debugZkConnection,
   readZkFromRegisteredDevice,
   listZkUsersOnDevice,

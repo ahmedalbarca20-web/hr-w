@@ -10,6 +10,7 @@ const {
   deviceCreateSchema,
   deviceUpdateSchema,
   deviceProbeSchema,
+  deviceScanRangeSchema,
   deviceZkSocketProbeSchema,
   deviceDebugZkConnectionSchema,
   deviceZkSocketByDeviceSchema,
@@ -144,6 +145,17 @@ const probeConnection = asyncHandler(async (req, res) => {
   const msg  = data.ok
     ? 'تم قراءة الرقم التسلسلي من الجهاز.'
     : (data.message || 'تعذّر إكمال الاختبار.');
+  sendSuccess(res, data, msg);
+});
+
+/** Scan IPv4 range for reachable ZK endpoints (via local agent / ZK path). */
+const scanZkRange = asyncHandler(async (req, res) => {
+  const parsed = deviceScanRangeSchema.safeParse(req.body || {});
+  if (!parsed.success) return sendError(res, parsed.error.errors[0]?.message, 422, 'VALIDATION_ERROR');
+  const data = await svc.scanZkRange(parsed.data);
+  const msg = data.reachable > 0
+    ? `تم العثور على ${data.reachable} جهاز/أجهزة ضمن الرينج.`
+    : 'لم يتم العثور على جهاز بصمة مستجيب ضمن الرينج.';
   sendSuccess(res, data, msg);
 });
 
@@ -441,7 +453,7 @@ const importZkAttendancesDirect = asyncHandler(async (req, res) => {
 module.exports = {
   importZkUsersToEmployeesDirect,
   importZkAttendancesDirect,
-  listDevices, getDevice, listEmployeeOptions, probeConnection, probeDeviceGateway, relayLocalAgentExecute, probeZkSocket, debugZkConnection, readZkFromDevice, listZkDeviceUsers, importZkUsersToEmployees, setZkDeviceUserPrivilege, unlockDeviceZkSession, importZkAttendances, createDevice, updateDevice, deactivateDevice, rotateApiKey,
+  listDevices, getDevice, listEmployeeOptions, probeConnection, scanZkRange, probeDeviceGateway, relayLocalAgentExecute, probeZkSocket, debugZkConnection, readZkFromDevice, listZkDeviceUsers, importZkUsersToEmployees, setZkDeviceUserPrivilege, unlockDeviceZkSession, importZkAttendances, createDevice, updateDevice, deactivateDevice, rotateApiKey,
   getPushConfig, testDeviceIngest,
   push, heartbeat,
   listLogs, getLog, reprocessLog, reResolveLogs,

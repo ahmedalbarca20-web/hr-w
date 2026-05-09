@@ -430,6 +430,28 @@ const deviceProbeSchema = z.object({
   quick: z.boolean().optional().default(true),
 });
 
+const ipv4AddressSchema = z.string().trim().regex(
+  /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/,
+  'Invalid IPv4 address',
+).refine((v) => v.split('.').every((n) => Number(n) >= 0 && Number(n) <= 255), {
+  message: 'Invalid IPv4 address',
+});
+
+/** Scan a local IPv4 range for ZK reachability (via local agent / ZK probe path). */
+const deviceScanRangeSchema = z.object({
+  from_ip: ipv4AddressSchema,
+  to_ip: ipv4AddressSchema,
+  port: z.coerce.number().int().min(1).max(65535).optional().default(4370),
+  socket_timeout_ms: z.coerce.number().int().min(800).max(15000).optional().default(2500),
+  comm_key: z.preprocess(
+    (v) => {
+      if (v === '' || v === null || v === undefined) return undefined;
+      return String(v).trim();
+    },
+    z.string().max(32).optional(),
+  ),
+});
+
 /**
  * devicePushSchema – the body pushed by hardware devices.
  * One push can contain many log entries (bulk).
@@ -719,6 +741,7 @@ module.exports = {
   deviceCreateSchema,
   deviceUpdateSchema,
   deviceProbeSchema,
+  deviceScanRangeSchema,
   deviceZkSocketProbeSchema,
   deviceDebugZkConnectionSchema,
   deviceZkSocketByDeviceSchema,
