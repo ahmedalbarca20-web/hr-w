@@ -44,6 +44,7 @@ router.post(
 // Agent polling API (called by the LAN agent; Bearer AGENT_SHARED_TOKEN).
 router.get('/agent/jobs', agentJobController.pollJobs);
 router.post('/agent/job-result', agentJobController.submitResult);
+router.post('/agent/heartbeat', agentJobController.submitAgentHeartbeat);
 router.get('/job-status/:id', agentJobController.getStatus);
 
 /** Queue ZK/LAN work for a polling local agent (JWT). Body: { agent_id, action, device_id?, ... } */

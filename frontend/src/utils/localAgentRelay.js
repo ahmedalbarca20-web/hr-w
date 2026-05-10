@@ -39,8 +39,8 @@ export function shouldRelayLocalAgentToApi() {
 export function friendlyLocalAgentRelayError(status, payload) {
 	const err = String(payload?.error || payload?.message || '');
 	const code = String(payload?.code || '');
-	if (status === 503 && (code === 'LOCAL_AGENT_NOT_CONFIGURED' || /LOCAL_AGENT_URL/i.test(err))) {
-		return 'تعذّر الاتصال بجهاز البصمة عبر الشبكة الداخلية. تأكد أن «وكيل الشبكة» يعمل على حاسبة في نفس شبكة الجهاز، وأن مسؤول النظام ربط الخادم بالوكيل (مرة واحدة).';
+	if (status === 503 && (code === 'AGENT_RELAY_NOT_CONFIGURED' || code === 'LOCAL_AGENT_NOT_CONFIGURED' || /AGENT_RELAY|LOCAL_AGENT_URL/i.test(err))) {
+		return 'تعذّر الاتصال بجهاز البصمة عبر الشبكة الداخلية. تأكد أن «وكيل المكتب» يعمل على ويندوز وأن المسؤول عيّن AGENT_RELAY_DEFAULT_ID على الخادم و VITE_AGENT_ID على الواجهة، أو نفق LOCAL_AGENT_URL (قديم).';
 	}
 	if (status === 401 || status === 403) {
 		return 'انتهت الجلسة أو لا تملك صلاحية. سجّل الدخول من جديد.';

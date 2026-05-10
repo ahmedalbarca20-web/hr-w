@@ -420,6 +420,8 @@ const deviceZkSocketByDeviceSchema = z.object({
 });
 
 const deviceProbeSchema = z.object({
+  /** Same value as office agent AGENT_ID when using outbound polling (no tunnel). */
+  agent_id: z.string().min(1).max(64).optional(),
   ip_address: deviceProbeNetworkHost,
   port: z
     .union([z.coerce.number().int().min(1).max(65535), z.literal(''), z.null(), z.undefined()])
@@ -662,8 +664,11 @@ const pushWebPushUnsubscribeSchema = z.object({
   endpoint: z.string().url().max(4096),
 });
 
-/** Browser → API → LOCAL_AGENT_URL/execute (ZK actions on the LAN). */
+/** Browser → API → outbound agent queue or LOCAL_AGENT_URL/execute (ZK actions on the LAN). */
 const localAgentRelaySchema = z.object({
+  /** Optional if API has AGENT_RELAY_DEFAULT_ID set. */
+  agent_id: z.string().min(1).max(64).optional(),
+  device_id: z.coerce.number().int().positive().optional(),
   action: z.enum([
     'probe',
     'zk_probe_snapshot',
@@ -693,8 +698,8 @@ const localAgentRelaySchema = z.object({
   max_users: z.coerce.number().int().min(1).max(2000).optional(),
   include_attendance_size: z.boolean().optional(),
 }).refine(
-  (d) => Boolean(String(d.device_ip || d.ip_address || '').trim()),
-  { message: 'device_ip or ip_address is required', path: ['device_ip'] },
+  (d) => Boolean(String(d.device_ip || d.ip_address || '').trim()) || (Number(d.device_id) > 0),
+  { message: 'device_ip, ip_address, or device_id is required', path: ['device_ip'] },
 );
 
 module.exports = {

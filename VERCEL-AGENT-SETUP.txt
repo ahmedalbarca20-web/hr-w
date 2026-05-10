@@ -85,4 +85,9 @@
   API: AGENT_SHARED_TOKEN + ALLOWED_AGENT_IDS + CLIENT_URL + DB
   مكتب: الوكيل 8099 + polling-agent + CLOUD_API_BASE_URL + نفس التوكن والمعرف
 
+■ تطوير محلي (npm run dev:all من جذر الريبو)
+---------------------------------------------
+  أضف في backend/.env: AGENT_SHARED_TOKEN و ALLOWED_AGENT_IDS وانسخ التوكن إلى local-agent/.env.
+  الكود يحمّل backend/.env بالمسار الكامل — لن يُغفل التوكن لمجرد أن cwd = جذر المشروع.
+
 انتهى الملف.

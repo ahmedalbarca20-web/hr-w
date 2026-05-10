@@ -229,6 +229,22 @@ const connectDB = async () => {
     }
   };
 
+  const ensureAgentHeartbeatsTable = async () => {
+    try {
+      await qi.describeTable('agent_heartbeats');
+    } catch {
+      await qi.createTable('agent_heartbeats', {
+        agent_id: { type: DataTypes.STRING(64), allowNull: false, primaryKey: true },
+        company_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
+        last_seen_at: { type: DataTypes.DATE, allowNull: false },
+        agent_version: { type: DataTypes.STRING(64), allowNull: true },
+        hostname: { type: DataTypes.STRING(128), allowNull: true },
+        meta: { type: DataTypes.JSON, allowNull: true },
+      });
+      await qi.addIndex('agent_heartbeats', ['last_seen_at'], { name: 'agent_heartbeats_last_seen_idx' });
+    }
+  };
+
   const ensureCompanyFeaturesTable = async () => {
     try {
       await qi.describeTable('company_features');
@@ -382,6 +398,7 @@ const connectDB = async () => {
     await ensurePushSubscriptionsTable();
     await ensureCompanyFeaturesTable();
     await ensureAgentJobsTable();
+    await ensureAgentHeartbeatsTable();
     if (dialect === 'postgres') {
       console.log('[DB] Connected to PostgreSQL.');
     } else {

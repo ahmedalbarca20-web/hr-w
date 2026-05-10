@@ -112,6 +112,7 @@ export default function SyncCenter() {
       if (dev?.ip_address) {
         try {
           const agentStatus = await listUsersLocalAgent({
+            device_id: deviceId,
             ip_address: dev.ip_address,
             port: 4370,
             comm_key: zkCommKey.trim() || dev?.comm_key || undefined,
@@ -396,6 +397,7 @@ export default function SyncCenter() {
       if (dev?.ip_address) {
         try {
           const agentStatus = await pullAttendanceLocalAgent({
+            device_id: devId,
             ip_address: dev.ip_address,
             port: 4370,
             comm_key: zkCommKey.trim() || dev?.comm_key || undefined,

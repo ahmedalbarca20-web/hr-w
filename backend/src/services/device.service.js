@@ -31,6 +31,41 @@ function localAgentAuthToken() {
   return String(process.env.LOCAL_AGENT_TOKEN || process.env.AGENT_TOKEN || '').trim();
 }
 
+/** LOCAL_AGENT_CONNECT_DEBUG=1 logs effective URL and fetch failure hints (remove after debugging). */
+function localAgentConnectDebugEnabled() {
+  const v = String(process.env.LOCAL_AGENT_CONNECT_DEBUG || '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+function logLocalAgentConnectDebug(event, data) {
+  if (!localAgentConnectDebugEnabled()) return;
+  // eslint-disable-next-line no-console
+  console.error('[TEMP LOCAL_AGENT_CONNECT_DEBUG]', event, data);
+}
+
+function localAgentTargetIsLoopback(base) {
+  try {
+    const h = new URL(base).hostname.toLowerCase();
+    return h === 'localhost' || h === '127.0.0.1' || h === '::1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Vercel serverless has no route to an operator's loopback; fail before fetch with a clear code.
+ */
+function assertLocalAgentUrlNotLoopbackOnVercel(base) {
+  if (String(process.env.VERCEL || '').trim() !== '1') return;
+  if (!base || !localAgentTargetIsLoopback(base)) return;
+  throw Object.assign(
+    new Error(
+      'LOCAL_AGENT_URL must not be localhost/127.0.0.1 on Vercel: the cloud cannot reach your PC loopback. Use a tunnel URL to the machine running local-agent (same LAN as the ZK device). — على Vercel استخدم رابط نفق عام وليس 127.0.0.1.',
+    ),
+    { statusCode: 503, code: 'LOCAL_AGENT_URL_LOOPBACK_ON_CLOUD' },
+  );
+}
+
 function isPrivateLanHost(host) {
   const h = String(host || '').trim();
   return /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.|127\.)/.test(h);
@@ -45,19 +80,41 @@ function requireAgentForPrivateLanZk(host) {
   if (!h || !isPrivateLanHost(h)) return;
   if (localAgentBaseUrl()) return;
   if (dtrBridgeBaseUrl()) return;
+  /** Outbound-only office agent: cloud queues jobs; no inbound tunnel. */
+  if (String(process.env.AGENT_RELAY_DEFAULT_ID || '').trim()) return;
   const prodLike = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
   if (!prodLike) return;
   throw Object.assign(
     new Error(
-      'LOCAL_AGENT_URL and LOCAL_AGENT_TOKEN (or AGENT_TOKEN) must be set: the device uses a private LAN IP and this API runs in the cloud. Set a tunnel (e.g. Cloudflare) to the PC running local-agent on the same LAN as the device. — اضبط LOCAL_AGENT_URL و LOCAL_AGENT_TOKEN على Vercel ليشيرا إلى نفق يصل لوكيل الشبكة بجانب جهاز البصمة.',
+      'Private LAN device from cloud: set AGENT_RELAY_DEFAULT_ID (office Windows agent id) for outbound polling, or set LOCAL_AGENT_URL + LOCAL_AGENT_TOKEN (legacy tunnel). — للسحابة: عيّن AGENT_RELAY_DEFAULT_ID أو نفق LOCAL_AGENT_URL.',
     ),
     { statusCode: 503, code: 'LOCAL_AGENT_NOT_CONFIGURED' },
   );
 }
 
+/** Legacy: API opens inbound tunnel to office PC. */
+function useLegacyInboundAgentRelay() {
+  if (String(process.env.DISABLE_LOCAL_AGENT_URL || '').trim() === '1') return false;
+  return Boolean(localAgentBaseUrl() && localAgentAuthToken());
+}
+
+function outboundDefaultAgentId(body) {
+  const b = body && typeof body === 'object' ? body : {};
+  return String(b.agent_id || process.env.AGENT_RELAY_DEFAULT_ID || '').trim();
+}
+
+/** @deprecated Prefer outbound agent job queue (AGENT_RELAY_DEFAULT_ID); kept for legacy LOCAL_AGENT_URL tunnel. */
 async function executeLocalAgentAction(body, { timeoutMs = 60000 } = {}) {
   const base = localAgentBaseUrl();
   if (!base) return null;
+  assertLocalAgentUrlNotLoopbackOnVercel(base);
+  logLocalAgentConnectDebug('execute_attempt', {
+    LOCAL_AGENT_URL: base,
+    postUrl: `${base}/execute`,
+    timeoutMs,
+    vercel: process.env.VERCEL,
+    nodeEnv: process.env.NODE_ENV,
+  });
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -88,6 +145,13 @@ async function executeLocalAgentAction(body, { timeoutMs = 60000 } = {}) {
     }
     if (e && e.statusCode) throw e;
     const msg = String(e?.message || e || 'fetch failed');
+    const cause = e && e.cause;
+    logLocalAgentConnectDebug('execute_fetch_failed', {
+      LOCAL_AGENT_URL: base,
+      message: msg,
+      causeCode: cause && cause.code,
+      causeMessage: cause && String(cause.message || ''),
+    });
     throw Object.assign(
       new Error(`Cannot reach LOCAL_AGENT_URL from this server. ${msg}`),
       { statusCode: 502, code: 'LOCAL_AGENT_UNREACHABLE' },
@@ -107,42 +171,50 @@ const LOCAL_AGENT_RELAY_ACTIONS = new Set([
 ]);
 
 /**
- * Authenticated HR UI → this API → LOCAL_AGENT_URL/execute (same payloads as the local agent).
- * Use when the browser cannot call http://127.0.0.1:8099 (optional path; set VITE_LOCAL_AGENT_RELAY=1 on the frontend).
+ * Authenticated HR UI → outbound office agent job queue (preferred) or legacy LOCAL_AGENT_URL/execute.
+ * @param {number} companyId
+ * @param {object} body — relay body (+ optional agent_id)
  */
-async function forwardLocalAgentExecute(body = {}) {
-  const base = localAgentBaseUrl();
-  if (!base) {
-    throw Object.assign(
-      new Error(
-        'LOCAL_AGENT_URL is not set on this API server. Admin: set LOCAL_AGENT_URL (tunnel to the PC running the agent) and LOCAL_AGENT_TOKEN to match the agent. — لم يُضبط ربط الخادم بالوكيل: اضبط LOCAL_AGENT_URL و LOCAL_AGENT_TOKEN على الخادم.',
-      ),
-      { statusCode: 503, code: 'LOCAL_AGENT_NOT_CONFIGURED' },
-    );
+async function forwardLocalAgentExecute(companyId, body = {}) {
+  if (companyId == null || !Number.isFinite(Number(companyId)) || Number(companyId) < 1) {
+    throw badReq('company_id is required for cloud agent relay');
   }
   const action = String(body.action || '').trim().toLowerCase();
   if (!LOCAL_AGENT_RELAY_ACTIONS.has(action)) {
     throw badReq(`Unsupported local agent action: ${action}`);
   }
-  const ip = String(body.device_ip || body.ip_address || '').trim();
-  if (!ip) {
-    throw badReq('device_ip or ip_address is required');
+  const agentId = outboundDefaultAgentId(body);
+  if (useLegacyInboundAgentRelay()) {
+    const ip = String(body.device_ip || body.ip_address || '').trim();
+    if (!ip) {
+      throw badReq('device_ip or ip_address is required');
+    }
+    const forwardBody = { ...body, action, device_ip: ip };
+    const tSock = Number(body.socket_timeout_ms ?? body.timeout_ms);
+    let budget;
+    if (Number.isFinite(tSock)) {
+      budget = Math.min(200000, Math.max(12000, tSock + 15000));
+    } else if (action === 'zk_probe_snapshot') {
+      budget = 120000;
+    } else if (action === 'pull_attendance') {
+      budget = 110000;
+    } else if (action === 'list_users' || action === 'set_user_privilege') {
+      budget = 65000;
+    } else {
+      budget = 35000;
+    }
+    return executeLocalAgentAction(forwardBody, { timeoutMs: budget });
   }
-  const forwardBody = { ...body, action, device_ip: ip };
-  const tSock = Number(body.socket_timeout_ms ?? body.timeout_ms);
-  let budget;
-  if (Number.isFinite(tSock)) {
-    budget = Math.min(200000, Math.max(12000, tSock + 15000));
-  } else if (action === 'zk_probe_snapshot') {
-    budget = 120000;
-  } else if (action === 'pull_attendance') {
-    budget = 110000;
-  } else if (action === 'list_users' || action === 'set_user_privilege') {
-    budget = 65000;
-  } else {
-    budget = 35000;
+  if (!agentId) {
+    throw Object.assign(
+      new Error(
+        'Office polling agent required: set AGENT_RELAY_DEFAULT_ID on this API (same as AGENT_ID on the Windows agent) or pass agent_id in the request body. Legacy tunnel: LOCAL_AGENT_URL + LOCAL_AGENT_TOKEN (omit DISABLE_LOCAL_AGENT_URL).',
+      ),
+      { statusCode: 503, code: 'AGENT_RELAY_NOT_CONFIGURED' },
+    );
   }
-  return executeLocalAgentAction(forwardBody, { timeoutMs: budget });
+  const relay = require('./agentJobRelay.service');
+  return relay.enqueueRelayJobAndWait(Number(companyId), agentId, body);
 }
 
 /** Base URL of [dtr.zkteco.api](https://github.com/itechxcellence/dtr.zkteco.api) on the LAN (or ngrok). When set, ZK reads use HTTP snapshot instead of TCP from this process. */
@@ -910,7 +982,7 @@ async function simulateTestIngest(device_id, company_id, { card_number = 'TEST-P
 
 /** zkteco-js TCP/UDP read — arbitrary IP (e.g. from device form before save). */
 async function probeZkSocket(body) {
-  if (localAgentBaseUrl()) {
+  if (useLegacyInboundAgentRelay()) {
     const sock = Number(body.socket_timeout_ms);
     const timeoutMs = Math.min(
       125000,
@@ -933,6 +1005,17 @@ async function probeZkSocket(body) {
       ...payload,
       connection_type: payload.connection_type || 'local_agent',
       source: 'local_agent',
+    };
+  }
+
+  const aidZk = outboundDefaultAgentId({});
+  if (aidZk) {
+    const relay = require('./agentJobRelay.service');
+    const payload = await relay.enqueueZkProbeSnapshotAndWait(aidZk, body);
+    return {
+      ...payload,
+      connection_type: payload.connection_type || 'outbound_agent',
+      source: 'outbound_agent',
     };
   }
 
@@ -986,7 +1069,7 @@ async function scanZkRange({ from_ip, to_ip, port = 4370, socket_timeout_ms = 25
     let source = null;
     try {
       let r;
-      if (localAgentBaseUrl()) {
+      if (useLegacyInboundAgentRelay()) {
         r = await executeLocalAgentAction({
           action: 'list_users',
           device_ip: ip,
@@ -994,6 +1077,14 @@ async function scanZkRange({ from_ip, to_ip, port = 4370, socket_timeout_ms = 25
           port: targetPort,
           socket_timeout_ms: Math.max(3000, timeout),
         }, { timeoutMs: Math.min(18000, Math.max(6000, timeout + 6000)) });
+      } else if (outboundDefaultAgentId({})) {
+        const relay = require('./agentJobRelay.service');
+        r = await relay.enqueueListUsersForIpAndWait(
+          outboundDefaultAgentId({}),
+          ip,
+          targetPort,
+          Math.max(3000, timeout),
+        );
       } else {
         r = await probeDeviceConnection({
           ip_address: ip,
@@ -1048,9 +1139,9 @@ async function debugZkConnection(body) {
   const zkT0 = Date.now();
   let zk = { ok: false, errors: [{ message: 'not run' }] };
   try {
-    if (localAgentBaseUrl()) {
+    if (useLegacyInboundAgentRelay() || outboundDefaultAgentId({})) {
       zk = await probeZkSocket(body);
-      zkLabel = 'local_agent_zk_probe';
+      zkLabel = useLegacyInboundAgentRelay() ? 'local_agent_zk_probe' : 'outbound_agent_zk_probe';
     } else if (dtrBase && !body.force_direct_zk) {
       zk = await dtrZkBridge.probeSnapshotFromBridge(dtrBase, body);
       zkLabel = 'dtr_bridge_probe';
@@ -1160,7 +1251,7 @@ async function readZkFromRegisteredDevice(device_id, company_id, overrides = {})
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
 
-  if (localAgentBaseUrl()) {
+  if (useLegacyInboundAgentRelay()) {
     const regUdp = Number.isFinite(Number(overrides.udp_local_port))
       ? Math.min(65535, Math.max(1024, Number(overrides.udp_local_port)))
       : undefined;
@@ -1182,6 +1273,22 @@ async function readZkFromRegisteredDevice(device_id, company_id, overrides = {})
       max_users: overrides.max_users ?? 80,
       include_attendance_size: overrides.include_attendance_size === true,
     }, { timeoutMs });
+  }
+
+  const aidRead = outboundDefaultAgentId({});
+  if (aidRead) {
+    const relay = require('./agentJobRelay.service');
+    return relay.enqueueDeviceActionAndWait(companyId, aidRead, 'zk_probe_snapshot', dev.id, {
+      device_ip: host,
+      port: overrides.port ?? 4370,
+      comm_key: overrides.comm_key ?? dev.comm_key ?? undefined,
+      socket_timeout_ms: overrides.socket_timeout_ms ?? 8000,
+      udp_local_port: overrides.udp_local_port,
+      minimal_probe: overrides.minimal_probe === true,
+      include_users: overrides.include_users !== false,
+      max_users: overrides.max_users ?? 80,
+      include_attendance_size: overrides.include_attendance_size === true,
+    });
   }
 
   const bridge = dtrBridgeBaseUrl();
@@ -1227,7 +1334,7 @@ async function listZkUsersOnDevice(device_id, company_id, query = {}) {
   });
   if (!dev) throw notFound(device_id);
 
-  if (localAgentBaseUrl()) {
+  if (useLegacyInboundAgentRelay()) {
     const host = (dev.ip_address || '').trim();
     if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
     if (dev.status === 'OFFLINE') throw badReq('Cannot read device users: device is offline');
@@ -1256,6 +1363,41 @@ async function listZkUsersOnDevice(device_id, company_id, query = {}) {
       attendance_size      : null,
       info                 : {
         source: 'local_agent',
+        connection_type: payload.connection_type || null,
+        duration_ms: payload.duration_ms ?? null,
+      },
+    };
+  }
+
+  const aidList = outboundDefaultAgentId({});
+  if (aidList) {
+    const host = (dev.ip_address || '').trim();
+    if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
+    if (dev.status === 'OFFLINE') throw badReq('Cannot read device users: device is offline');
+    const socketRaw = query.socket_timeout_ms;
+    const socket_timeout_ms = Number.isFinite(Number(socketRaw))
+      ? Math.min(120000, Math.max(8000, Number(socketRaw)))
+      : 45000;
+    const relay = require('./agentJobRelay.service');
+    const payload = await relay.enqueueDeviceActionAndWait(companyId, aidList, 'list_users', dev.id, {
+      port: query.port,
+      comm_key: query.comm_key ?? dev.comm_key ?? undefined,
+      socket_timeout_ms,
+      udp_local_port: query.udp_local_port,
+    });
+    if (!payload?.ok) {
+      const msg = payload?.errors?.[0]?.message || payload?.message || 'Office agent ZK read failed';
+      throw Object.assign(new Error(msg), { statusCode: 502, code: 'ZK_ERROR' });
+    }
+    const includePassword = query.include_password === true;
+    const rawUsers = Array.isArray(payload.users) ? payload.users : [];
+    return {
+      device               : { id: dev.id, name: dev.name, serial_number: dev.serial_number },
+      users                : sanitizeZkUserRows(rawUsers, includePassword),
+      user_count_on_device : payload.user_count_on_device ?? rawUsers.length,
+      attendance_size      : null,
+      info                 : {
+        source: 'outbound_agent',
         connection_type: payload.connection_type || null,
         duration_ms: payload.duration_ms ?? null,
       },
@@ -1388,7 +1530,7 @@ async function setZkDeviceUserPrivilege(device_id, company_id, body = {}) {
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
 
-  if (localAgentBaseUrl()) {
+  if (useLegacyInboundAgentRelay()) {
     const payload = await executeLocalAgentAction({
       action: 'set_user_privilege',
       device_ip: host,
@@ -1415,9 +1557,34 @@ async function setZkDeviceUserPrivilege(device_id, company_id, body = {}) {
     };
   }
 
+  const aidPriv = outboundDefaultAgentId({});
+  if (aidPriv) {
+    const relay = require('./agentJobRelay.service');
+    const payload = await relay.enqueueDeviceActionAndWait(companyId, aidPriv, 'set_user_privilege', dev.id, {
+      port,
+      comm_key: body.comm_key ?? dev.comm_key ?? undefined,
+      uid,
+      is_admin: isAdmin,
+      socket_timeout_ms,
+    });
+    if (!payload?.ok) {
+      const msg = payload?.errors?.[0]?.message || payload?.error || 'Office agent set_user_privilege failed';
+      throw Object.assign(new Error(msg), { statusCode: 502, code: 'ZK_ERROR' });
+    }
+    await dev.update({ last_sync: new Date() });
+    return {
+      device: { id: dev.id, name: dev.name, serial_number: dev.serial_number },
+      uid,
+      is_admin: isAdmin,
+      previous_role: payload.previous_role ?? null,
+      applied_role: payload.applied_role ?? (isAdmin ? ZK_PRIV_ADMIN : ZK_PRIV_USER),
+      connection_type: payload.connection_type || 'outbound_agent',
+    };
+  }
+
   if (isPrivateLanHost(host) && process.env.VERCEL === '1') {
     throw badReq(
-      'خادم Vercel لا يصل إلى عنوان الجهاز الداخلي. اضبط LOCAL_AGENT_URL و LOCAL_AGENT_TOKEN على الخادم ليشيرا إلى وكيل الشبكة على نفس LAN جهاز البصمة.',
+      'خادم Vercel لا يصل إلى عنوان الجهاز الداخلي. اضبط AGENT_RELAY_DEFAULT_ID ووكيلاً يعمل على المكتب، أو نفق LOCAL_AGENT_URL.',
     );
   }
 
@@ -1502,7 +1669,7 @@ async function unlockDeviceZkSession(device_id, company_id, body = {}) {
   const host = (dev.ip_address || '').trim();
   if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
 
-  if (localAgentBaseUrl()) {
+  if (useLegacyInboundAgentRelay()) {
     const payload = await executeLocalAgentAction({
       action: 'unlock_device',
       device_ip: host,
@@ -1520,9 +1687,27 @@ async function unlockDeviceZkSession(device_id, company_id, body = {}) {
     };
   }
 
+  const aidUn = outboundDefaultAgentId({});
+  if (aidUn) {
+    const relay = require('./agentJobRelay.service');
+    const payload = await relay.enqueueDeviceActionAndWait(companyId, aidUn, 'unlock_device', dev.id, {
+      port,
+      comm_key: body.comm_key ?? dev.comm_key ?? undefined,
+      socket_timeout_ms,
+    });
+    if (!payload?.ok) {
+      const msg = payload?.errors?.[0]?.message || payload?.error || 'Office agent unlock failed';
+      throw Object.assign(new Error(msg), { statusCode: 502, code: 'ZK_ERROR' });
+    }
+    return {
+      device: { id: dev.id, name: dev.name, serial_number: dev.serial_number },
+      connection_type: payload.connection_type || 'outbound_agent',
+    };
+  }
+
   if (isPrivateLanHost(host) && process.env.VERCEL === '1') {
     throw badReq(
-      'خادم Vercel لا يصل إلى عنوان الجهاز على الشبكة الداخلية (مثل 192.168.x). اضبط على Vercel المتغيرين LOCAL_AGENT_URL و LOCAL_AGENT_TOKEN ليشيرا إلى وكيل الشبكة (نفق) يعمل على حاسبة بنفس شبكة جهاز البصمة، ثم أعد محاولة فك القفل.',
+      'خادم Vercel لا يصل إلى عنوان الجهاز على الشبكة الداخلية. اضبط AGENT_RELAY_DEFAULT_ID ووكيل المكتب، أو نفق LOCAL_AGENT_URL.',
     );
   }
 
@@ -1571,9 +1756,11 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
 
   const bridge = dtrBridgeBaseUrl();
   const host = (dev.ip_address || '').trim();
-  const useAgent = Boolean(localAgentBaseUrl());
+  const useLegacyAgent = useLegacyInboundAgentRelay();
+  const useOutboundAgent = Boolean(outboundDefaultAgentId({}));
+  const useAnyAgent = useLegacyAgent || useOutboundAgent;
 
-  if (useAgent) {
+  if (useAnyAgent) {
     if (dev.status === 'OFFLINE') throw badReq('Cannot pull attendance: device is marked offline');
     if (!host) throw badReq('Device has no network host — save ip_address on this device first.');
   } else if (!bridge) {
@@ -1587,7 +1774,7 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
   const pullPort = port != null && Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 4370;
 
   let zkPull;
-  if (useAgent) {
+  if (useLegacyAgent) {
     const timeoutMs = Math.min(200000, Math.max(20000, Number(socket_timeout_ms) + 20000));
     const payload = await executeLocalAgentAction({
       action: 'pull_attendance',
@@ -1599,6 +1786,29 @@ async function importZkAttendancesToDeviceLogs(device_id, company_id, options = 
     zkPull = {
       ok: Boolean(payload.ok),
       connection_type: payload.connection_type || 'local_agent',
+      attendance_size: payload.attendance_size ?? null,
+      records: Array.isArray(payload.records) ? payload.records : [],
+      device_users: Array.isArray(payload.device_users) ? payload.device_users : [],
+      errors: Array.isArray(payload.errors) ? payload.errors : [],
+      attendance_retry_without_disable: Boolean(payload.attendance_retry_without_disable),
+    };
+  } else if (useOutboundAgent) {
+    const relay = require('./agentJobRelay.service');
+    const aidPull = outboundDefaultAgentId({});
+    const payload = await relay.enqueueDeviceActionAndWait(company_id, aidPull, 'pull_attendance', dev.id, {
+      port: pullPort,
+      comm_key: comm_key ?? dev.comm_key ?? undefined,
+      socket_timeout_ms,
+      date_from,
+      date_to,
+      max_records,
+      auto_process,
+      overwrite_attendance,
+      auto_ingest: false,
+    });
+    zkPull = {
+      ok: Boolean(payload.ok),
+      connection_type: payload.connection_type || 'outbound_agent',
       attendance_size: payload.attendance_size ?? null,
       records: Array.isArray(payload.records) ? payload.records : [],
       device_users: Array.isArray(payload.device_users) ? payload.device_users : [],
@@ -1834,14 +2044,12 @@ async function reResolveUnresolvedLogs(company_id) {
 }
 
 /**
- * Cloud → Local Agent `POST /execute` (action probe). Used by `POST /api/probe-device`.
+ * Cloud probe: legacy `POST LOCAL_AGENT_URL/execute` or outbound job queue (office agent polls GET /agent/jobs).
+ * Used by `POST /api/probe-device`.
  */
 async function probeDeviceViaAgentGateway(body) {
-  const base = localAgentBaseUrl();
-  const token = localAgentAuthToken();
-  const device_ip = String(body?.device_ip || '').trim();
+  const device_ip = String(body?.device_ip || body?.ip_address || '').trim();
   const isVercel = process.env.VERCEL === '1';
-  /** Vercel: keep agent HTTP probe short; local/LAN API: allow slower device panels. */
   const timeout_ms = isVercel
     ? Math.min(1000, Math.max(200, Number(body?.timeout_ms) || 800))
     : Math.min(15000, Math.max(200, Number(body?.timeout_ms) || 4000));
@@ -1852,57 +2060,83 @@ async function probeDeviceViaAgentGateway(body) {
     err.code = 'VALIDATION_ERROR';
     throw err;
   }
-  if (!base || !token) {
-    const err = new Error('LOCAL_AGENT_URL and LOCAL_AGENT_TOKEN (or AGENT_TOKEN) must be set');
-    err.statusCode = 503;
-    err.code = 'LOCAL_AGENT_NOT_CONFIGURED';
-    throw err;
+
+  if (useLegacyInboundAgentRelay()) {
+    const base = localAgentBaseUrl();
+    const token = localAgentAuthToken();
+    assertLocalAgentUrlNotLoopbackOnVercel(base);
+    logLocalAgentConnectDebug('probe_gateway_attempt', {
+      LOCAL_AGENT_URL: base,
+      postUrl: `${base}/execute`,
+      device_ip,
+      vercel: process.env.VERCEL,
+      nodeEnv: process.env.NODE_ENV,
+    });
+
+    const controller = new AbortController();
+    const cloudBudgetMs = isVercel ? 2500 : Math.min(20000, timeout_ms + 2500);
+    const t = setTimeout(() => controller.abort(), cloudBudgetMs);
+    try {
+      const resp = await fetch(`${base}/execute`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: 'probe',
+          device_ip,
+          timeout_ms,
+        }),
+        signal: controller.signal,
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const err = new Error(payload?.error || `Local agent HTTP ${resp.status}`);
+        err.statusCode = 502;
+        err.code = 'LOCAL_AGENT_ERROR';
+        throw err;
+      }
+      return payload;
+    } catch (e) {
+      const isAbort = e && (e.name === 'AbortError' || /aborted|abort/i.test(String(e.message || '')));
+      if (isAbort) {
+        const err = new Error('Local agent request timeout');
+        err.statusCode = 504;
+        err.code = 'LOCAL_AGENT_TIMEOUT';
+        throw err;
+      }
+      if (e && e.statusCode) throw e;
+      const msg = String(e?.message || e || 'fetch failed');
+      const cause = e && e.cause;
+      logLocalAgentConnectDebug('probe_gateway_fetch_failed', {
+        LOCAL_AGENT_URL: base,
+        message: msg,
+        causeCode: cause && cause.code,
+        causeMessage: cause && String(cause.message || ''),
+      });
+      const err = new Error(
+        `Cannot reach LOCAL_AGENT_URL from this server (check tunnel/VPN and that the agent is running). ${msg}`,
+      );
+      err.statusCode = 502;
+      err.code = 'LOCAL_AGENT_UNREACHABLE';
+      throw err;
+    } finally {
+      clearTimeout(t);
+    }
   }
 
-  const controller = new AbortController();
-  const cloudBudgetMs = isVercel ? 2500 : Math.min(20000, timeout_ms + 2500);
-  const t = setTimeout(() => controller.abort(), cloudBudgetMs);
-  try {
-    const resp = await fetch(`${base}/execute`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        action: 'probe',
-        device_ip,
-        timeout_ms,
-      }),
-      signal: controller.signal,
-    });
-    const payload = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      const err = new Error(payload?.error || `Local agent HTTP ${resp.status}`);
-      err.statusCode = 502;
-      err.code = 'LOCAL_AGENT_ERROR';
-      throw err;
-    }
-    return payload;
-  } catch (e) {
-    const isAbort = e && (e.name === 'AbortError' || /aborted|abort/i.test(String(e.message || '')));
-    if (isAbort) {
-      const err = new Error('Local agent request timeout');
-      err.statusCode = 504;
-      err.code = 'LOCAL_AGENT_TIMEOUT';
-      throw err;
-    }
-    if (e && e.statusCode) throw e;
-    const msg = String(e?.message || e || 'fetch failed');
+  const agentId = outboundDefaultAgentId(body);
+  if (!agentId) {
     const err = new Error(
-      `Cannot reach LOCAL_AGENT_URL from this server (check tunnel/VPN and that the agent is running). ${msg}`,
+      'Set AGENT_RELAY_DEFAULT_ID on the API or pass agent_id in the probe body. Legacy: LOCAL_AGENT_URL + LOCAL_AGENT_TOKEN.',
     );
-    err.statusCode = 502;
-    err.code = 'LOCAL_AGENT_UNREACHABLE';
+    err.statusCode = 503;
+    err.code = 'AGENT_RELAY_NOT_CONFIGURED';
     throw err;
-  } finally {
-    clearTimeout(t);
   }
+  const relay = require('./agentJobRelay.service');
+  return relay.enqueueProbeJobAndWait(agentId, device_ip, timeout_ms);
 }
 
 // ── Export ───────────────────────────────────────────────────────────────────

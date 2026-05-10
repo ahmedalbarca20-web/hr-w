@@ -24,6 +24,7 @@ async function callLocalAgent(action, data = {}) {
 		action,
 		device_ip,
 		ip_address: device_ip,
+		device_id: data.device_id,
 		port,
 		comm_key,
 		timeout_ms,
@@ -32,11 +33,25 @@ async function callLocalAgent(action, data = {}) {
 		include_password: data.include_password,
 		uid: data.uid,
 		is_admin: data.is_admin,
+		minimal_probe: data.minimal_probe,
+		include_users: data.include_users,
+		max_users: data.max_users,
+		include_attendance_size: data.include_attendance_size,
+		date_from: data.date_from,
+		date_to: data.date_to,
+		max_records: data.max_records,
+		auto_process: data.auto_process,
+		overwrite_attendance: data.overwrite_attendance,
+		auto_ingest: data.auto_ingest,
 	};
 
 	if (shouldRelayLocalAgentToApi()) {
+		const agentId = String(import.meta.env.VITE_AGENT_ID || '').trim();
 		try {
-			const { data: wrap } = await api.post('/devices/local-agent/execute', body);
+			const { data: wrap } = await api.post('/devices/local-agent/execute', {
+				...body,
+				...(agentId ? { agent_id: agentId } : {}),
+			});
 			const inner = wrap?.data ?? wrap;
 			return { status: 200, data: inner };
 		} catch (e) {
@@ -132,7 +147,14 @@ async function pollAgentJob(jobId, { maxWaitMs = 45000, intervalMs = 800 } = {})
  */
 export async function probeDeviceViaAgent(data = {}) {
 	if (!shouldRelayLocalAgentToApi()) {
-		return api.post('/probe-device', data);
+		const agentId = String(import.meta.env.VITE_AGENT_ID || '').trim();
+		const ip = data.device_ip || data.ip_address;
+		return api.post('/probe-device', {
+			...data,
+			ip_address: ip,
+			device_ip: ip,
+			...(agentId ? { agent_id: agentId } : {}),
+		});
 	}
 
 	const agentId = String(data.agent_id || import.meta.env.VITE_AGENT_ID || '').trim();

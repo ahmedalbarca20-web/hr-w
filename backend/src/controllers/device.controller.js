@@ -447,13 +447,17 @@ const probeDeviceGateway = asyncHandler(async (req, res) => {
   sendSuccess(res, data);
 });
 
-/** Authenticated relay: browser → API → LOCAL_AGENT_URL/execute (ZK list/pull/unlock/privilege). */
+/** Authenticated relay: browser → outbound agent job queue or legacy LOCAL_AGENT_URL/execute. */
 const relayLocalAgentExecute = asyncHandler(async (req, res) => {
   const parsed = localAgentRelaySchema.safeParse(req.body || {});
   if (!parsed.success) {
     return sendError(res, parsed.error.errors[0]?.message, 422, 'VALIDATION_ERROR');
   }
-  const data = await svc.forwardLocalAgentExecute(parsed.data);
+  const company_id = resolveCompanyId(req);
+  if (company_id == null || !Number.isFinite(Number(company_id)) || Number(company_id) < 1) {
+    return sendError(res, 'company_id is required for agent relay (super admin: ?company_id= or select company)', 422, 'VALIDATION_ERROR');
+  }
+  const data = await svc.forwardLocalAgentExecute(company_id, parsed.data);
   sendSuccess(res, data);
 });
 

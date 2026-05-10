@@ -225,10 +225,46 @@ async function getJob(id) {
   return getJobDb(id);
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Poll until job reaches a terminal status (agent posted job-result).
+ * @param {string} jobId
+ * @param {{ maxWaitMs?: number, intervalMs?: number }} opts
+ * @returns {Promise<object>} job row (plain)
+ */
+async function waitForJobTerminal(jobId, opts = {}) {
+  const maxWaitMs = Number.isFinite(Number(opts.maxWaitMs)) ? Number(opts.maxWaitMs) : 130000;
+  const intervalMs = Number.isFinite(Number(opts.intervalMs)) ? Number(opts.intervalMs) : 400;
+  const deadline = Date.now() + maxWaitMs;
+  const terminal = new Set(['success', 'failed', 'timeout']);
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const job = await getJob(jobId);
+    if (!job) {
+      throw Object.assign(new Error('Job not found'), { statusCode: 404, code: 'NOT_FOUND' });
+    }
+    if (terminal.has(String(job.status || '').toLowerCase())) {
+      return job;
+    }
+    if (Date.now() >= deadline) {
+      throw Object.assign(new Error('Timed out waiting for office agent to complete the job'), {
+        statusCode: 504,
+        code: 'AGENT_JOB_WAIT_TIMEOUT',
+      });
+    }
+    await sleep(intervalMs);
+  }
+}
+
 module.exports = {
   createJob,
   claimPendingJobs,
   completeJob,
   getJob,
   useFileStore,
+  waitForJobTerminal,
+  sleep,
 };

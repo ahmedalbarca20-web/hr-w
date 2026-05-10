@@ -1,23 +1,39 @@
 'use strict';
 
-require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+// Always load local-agent/.env (cwd may be repo root).
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
+const { loadAgentConfig, DEFAULT_WIN_CONFIG_DIR } = require('./config');
 const axios = require('axios');
 const { app, log, runProbe, DEFAULT_TIMEOUT_MS } = require('./server');
 
-const PORT = Number(process.env.LOCAL_AGENT_PORT || 8099);
-const API_BASE_URL = String(process.env.CLOUD_API_BASE_URL || '').replace(/\/+$/, '');
-const AGENT_ID = String(process.env.AGENT_ID || '').trim();
-const AGENT_SHARED_TOKEN = String(process.env.AGENT_SHARED_TOKEN || '').trim();
-const POLL_INTERVAL_MS = Number.isFinite(Number(process.env.POLL_INTERVAL_MS))
-  ? Number(process.env.POLL_INTERVAL_MS)
-  : 2000;
+const CFG = loadAgentConfig();
+const PORT = Number(CFG.LOCAL_AGENT_PORT || 8099);
+const API_BASE_URL = String(CFG.CLOUD_API_BASE_URL || '').replace(/\/+$/, '');
+const AGENT_ID = String(CFG.AGENT_ID || '').trim();
+const AGENT_SHARED_TOKEN = String(CFG.AGENT_SHARED_TOKEN || '').trim();
+const COMPANY_ID_RAW = String(CFG.COMPANY_ID || '').trim();
+const COMPANY_ID = Number.isFinite(Number(COMPANY_ID_RAW)) && Number(COMPANY_ID_RAW) > 0 ? Number(COMPANY_ID_RAW) : null;
+const POLL_INTERVAL_MS = Number.isFinite(Number(CFG.POLL_INTERVAL_MS)) ? Number(CFG.POLL_INTERVAL_MS) : 3000;
+const HEARTBEAT_INTERVAL_MS = Number.isFinite(Number(CFG.HEARTBEAT_INTERVAL_MS)) ? Number(CFG.HEARTBEAT_INTERVAL_MS) : 60000;
+const PENDING_RESULTS_FILE = path.join(CFG.configDir || DEFAULT_WIN_CONFIG_DIR, 'pending-job-results.json');
+
+const pkg = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+  } catch {
+    return { version: '1.0.0' };
+  }
+})();
 
 if (!API_BASE_URL) {
-  throw new Error('CLOUD_API_BASE_URL is required (e.g. https://your-app.vercel.app/api)');
+  throw new Error('CLOUD_API_BASE_URL (or config.json backend_url) is required');
 }
 if (!AGENT_ID) {
-  throw new Error('AGENT_ID is required (e.g. office_1)');
+  throw new Error('AGENT_ID (or config.json agent_id) is required');
 }
 if (!AGENT_SHARED_TOKEN) {
   throw new Error('AGENT_SHARED_TOKEN is required to authenticate against cloud API');
@@ -31,16 +47,76 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function classifyAxiosError(err) {
+  const code = err?.code || err?.cause?.code || null;
+  const msg = String(err?.message || err || '');
+  if (code === 'ECONNREFUSED') return { kind: 'ECONNREFUSED', code, msg };
+  if (code === 'ETIMEDOUT' || code === 'ECONNABORTED') return { kind: 'TIMEOUT', code, msg };
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return { kind: 'DNS', code, msg };
+  return { kind: 'OTHER', code, msg };
+}
+
+let pollBackoffMs = 0;
+
+function loadPendingResults() {
+  try {
+    if (!fs.existsSync(PENDING_RESULTS_FILE)) return [];
+    const raw = fs.readFileSync(PENDING_RESULTS_FILE, 'utf8');
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePendingResults(rows) {
+  try {
+    const dir = path.dirname(PENDING_RESULTS_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(PENDING_RESULTS_FILE, JSON.stringify(rows, null, 2), 'utf8');
+  } catch (e) {
+    log('pending_results_write_error', { message: String(e?.message || e) });
+  }
+}
+
+async function flushPendingResultsOnce() {
+  let rows = loadPendingResults();
+  if (rows.length === 0) return;
+  const next = [];
+  for (const row of rows) {
+    try {
+      const resp = await axios.post(`${API_BASE_URL}/agent/job-result`, row.body, {
+        timeout: 120000,
+        headers: {
+          Authorization: `Bearer ${AGENT_SHARED_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        validateStatus: () => true,
+      });
+      if (resp.status >= 200 && resp.status < 300) {
+        log('pending_result_flushed', { job_id: row.body?.job_id });
+      } else {
+        next.push(row);
+      }
+    } catch {
+      next.push(row);
+    }
+  }
+  if (next.length !== rows.length) savePendingResults(next);
+}
+
 async function fetchJobsOnce() {
   try {
     const url = `${API_BASE_URL}/agent/jobs?agent_id=${encodeURIComponent(AGENT_ID)}`;
     const resp = await axios.get(url, {
-      timeout: Math.max(1000, POLL_INTERVAL_MS - 200),
+      timeout: Math.max(2000, POLL_INTERVAL_MS + 5000),
       headers: {
         Authorization: `Bearer ${AGENT_SHARED_TOKEN}`,
       },
       validateStatus: () => true,
     });
+
+    pollBackoffMs = 0;
 
     if (resp.status === 204) return [];
     if (resp.status !== 200) {
@@ -54,7 +130,9 @@ async function fetchJobsOnce() {
     }
     return jobs;
   } catch (err) {
-    log('poll_error', { message: String(err?.message || err), code: err?.code || null });
+    const c = classifyAxiosError(err);
+    log('poll_error', { kind: c.kind, code: c.code, message: c.msg });
+    pollBackoffMs = Math.min(60000, pollBackoffMs ? Math.min(60000, pollBackoffMs * 2) : 3000);
     return [];
   }
 }
@@ -89,8 +167,40 @@ async function sendResult(job, status, result, error) {
     } catch (err) {
       log('job_result_error', { job_id: job.job_id, message: String(err?.message || err) });
       const isTimeout = err?.code === 'ECONNABORTED' || /timeout/i.test(String(err?.message || ''));
-      if (!isTimeout || i === 1) return;
+      if (!isTimeout || i === 1) {
+        const pending = loadPendingResults();
+        pending.push({ at: new Date().toISOString(), body });
+        savePendingResults(pending);
+        log('job_result_queued_offline', { job_id: job.job_id });
+        return;
+      }
     }
+  }
+}
+
+async function sendHeartbeatOnce() {
+  try {
+    const payload = {
+      agent_id: AGENT_ID,
+      agent_version: pkg.version || '1.0.0',
+      hostname: os.hostname(),
+    };
+    if (COMPANY_ID) payload.company_id = COMPANY_ID;
+    const resp = await axios.post(`${API_BASE_URL}/agent/heartbeat`, payload, {
+      timeout: 15000,
+      headers: {
+        Authorization: `Bearer ${AGENT_SHARED_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      validateStatus: () => true,
+    });
+    if (resp.status >= 200 && resp.status < 300) {
+      log('heartbeat_ok', {});
+    } else {
+      log('heartbeat_http_error', { status: resp.status });
+    }
+  } catch (err) {
+    log('heartbeat_error', { message: String(err?.message || err), code: err?.code || null });
   }
 }
 
@@ -116,7 +226,7 @@ function jobToExecuteBody(job) {
 }
 
 async function runExecuteViaLocalHttp(job) {
-  const token = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
+  const token = String(process.env.LOCAL_AGENT_TOKEN || CFG.LOCAL_AGENT_TOKEN || '').trim();
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
   const execBody = jobToExecuteBody(job);
@@ -222,19 +332,33 @@ function startAutoEnqueueIfConfigured() {
 }
 
 async function loop() {
-  log('poller_started', { agent_id: AGENT_ID, api: API_BASE_URL, interval_ms: POLL_INTERVAL_MS });
+  log('poller_started', {
+    agent_id: AGENT_ID,
+    api: API_BASE_URL,
+    interval_ms: POLL_INTERVAL_MS,
+    heartbeat_ms: HEARTBEAT_INTERVAL_MS,
+  });
+  let lastHb = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    await flushPendingResultsOnce();
+
+    const now = Date.now();
+    if (now - lastHb >= HEARTBEAT_INTERVAL_MS) {
+      lastHb = now;
+      // eslint-disable-next-line no-await-in-loop
+      await sendHeartbeatOnce();
+    }
+
     const jobs = await fetchJobsOnce();
-    // Process sequentially to keep things simple for now.
-    // Can be parallelised per-job in the future.
     // eslint-disable-next-line no-await-in-loop
     for (const job of jobs) {
       // eslint-disable-next-line no-await-in-loop
       await handleJob(job);
     }
+    const extra = pollBackoffMs > 0 ? pollBackoffMs : 0;
     // eslint-disable-next-line no-await-in-loop
-    await sleep(POLL_INTERVAL_MS);
+    await sleep(POLL_INTERVAL_MS + extra);
   }
 }
 
@@ -244,4 +368,3 @@ loop().catch((err) => {
   log('poller_fatal', { message: String(err?.message || err), stack: err?.stack });
   process.exitCode = 1;
 });
-

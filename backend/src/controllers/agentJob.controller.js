@@ -3,6 +3,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess, sendError } = require('../utils/response');
 const jobs = require('../services/agentJob.service');
+const agentHeartbeatSvc = require('../services/agentHeartbeat.service');
 const { Device } = require('../models/device.model');
 
 /** Actions the polling LAN agent may claim and run locally. */
@@ -18,9 +19,26 @@ const POLLABLE_ACTIONS = new Set([
 const VALID_ACTIONS = POLLABLE_ACTIONS;
 
 function getAgentBearerToken(req) {
-  const raw = String(req.headers.authorization || '');
-  if (!raw.startsWith('Bearer ')) return '';
-  return raw.slice(7).trim();
+  const raw = String(req.headers.authorization || '').trim();
+  const m = raw.match(/^Bearer\s+(.*)$/i);
+  if (!m) return '';
+  return String(m[1] || '').trim();
+}
+
+/** Set AGENT_AUTH_DEBUG=1 to log why agent Bearer auth failed (remove after debugging). */
+function logAgentAuthDebugFailure(req, token, expected) {
+  if (String(process.env.AGENT_AUTH_DEBUG || '').trim() !== '1') return;
+  const rawAuth = String(req.headers.authorization || '');
+  // eslint-disable-next-line no-console
+  console.error('[TEMP AGENT_AUTH_DEBUG] requireAgentAuth rejected', {
+    receivedToken: token,
+    expectedToken: expected,
+    receivedLen: token.length,
+    expectedLen: expected.length,
+    equal: token === expected,
+    rawAuthorizationLen: rawAuth.length,
+    rawAuthorizationPrefix: rawAuth.slice(0, 24),
+  });
 }
 
 function requireAgentAuth(req, res) {
@@ -31,6 +49,7 @@ function requireAgentAuth(req, res) {
     return false;
   }
   if (!token || token !== expected) {
+    logAgentAuthDebugFailure(req, token, expected);
     sendError(res, 'Agent unauthorized', 401, 'AGENT_UNAUTHORIZED');
     return false;
   }
@@ -450,6 +469,23 @@ const submitResult = asyncHandler(async (req, res) => {
 });
 
 /**
+ * POST /api/agent/heartbeat — office agent outbound health (Bearer AGENT_SHARED_TOKEN).
+ * Body: { agent_id (optional if query), company_id?, agent_version?, hostname?, meta? }
+ */
+const submitAgentHeartbeat = asyncHandler(async (req, res) => {
+  if (!requireAgentAuth(req, res)) return;
+  const companyIdRaw = req.body?.company_id;
+  const companyId = Number.isFinite(Number(companyIdRaw)) && Number(companyIdRaw) > 0 ? Number(companyIdRaw) : null;
+  await agentHeartbeatSvc.touch(req.agentId, {
+    company_id: companyId,
+    agent_version: req.body?.agent_version,
+    hostname: req.body?.hostname,
+    meta: req.body?.meta,
+  });
+  sendSuccess(res, { agent_id: req.agentId, at: new Date().toISOString() }, 'heartbeat ok');
+});
+
+/**
  * GET /api/job-status/:id
  */
 const getStatus = asyncHandler(async (req, res) => {
@@ -478,5 +514,6 @@ module.exports = {
   enqueueAgentJob,
   pollJobs,
   submitResult,
+  submitAgentHeartbeat,
   getStatus,
 };
