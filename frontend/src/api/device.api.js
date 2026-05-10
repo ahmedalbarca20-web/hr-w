@@ -227,6 +227,8 @@ export async function probeDeviceViaAgent(data = {}) {
 }
 /** Try calling the local agent directly from the browser (localhost). Returns { status, data } or throws. */
 export const probeLocalAgent = (data) => callLocalAgent('probe', data);
+/** ZK snapshot via local agent (same LAN as device) — use device ZK port (e.g. 4370), not HTTP 80. */
+export const probeZkSnapshotLocalAgent = (data) => callLocalAgent('zk_probe_snapshot', data);
 /** ZK binary protocol (zkteco-js) — TCP/UDP; optional fields: socket_timeout_ms, udp_local_port, include_users, max_users */
 export const probeZkSocket = (data) => api.post('/devices/probe-zk-socket', data);
 /** Combined diagnostics: ZK path + HTTP probe + runtime env hints. */

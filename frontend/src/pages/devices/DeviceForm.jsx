@@ -7,6 +7,7 @@ import {
   updateDevice,
   probeDeviceViaAgent,
   probeLocalAgent,
+  probeZkSnapshotLocalAgent,
   probeDeviceConnection,
   probeZkSocket,
   scanZkRange,
@@ -171,9 +172,9 @@ export default function DeviceForm() {
     try {
       const tryLocalBrowserAgent = async () => {
         try {
-          const res = await probeLocalAgent({
+          // HTTP لوحة الجهاز (cgi getoption) — المنفذ الافتراضي 80؛ لا تمرّر منفذ ZK (4370) وإلا يفشل الفحص.
+          let res = await probeLocalAgent({
             device_ip: form.ip_address.trim(),
-            port: zkPort,
             comm_key: form.comm_key?.trim() || undefined,
             timeout_ms: 1200,
           });
@@ -181,8 +182,38 @@ export default function DeviceForm() {
             const nextSerial = res.data.serial_number || form.serial_number || makeFallbackSerial(form.ip_address);
             setForm((p) => ({ ...p, serial_number: nextSerial, firmware_version: res.data.firmware_version || p.firmware_version }));
             setTestResult('success');
-            setTestMessage('تم فحص الاتصال مباشرة من المتصفح عبر Local Agent (localhost).');
+            setTestMessage('تم فحص الاتصال مباشرة من المتصفح عبر Local Agent (HTTP لوحة الجهاز).');
             return true;
+          }
+          // أجهزة ZK بدون ويب: نفس الوكيل على LAN يفحص بروتوكول ZK على المنفذ المعرّف في النموذج.
+          res = await probeZkSnapshotLocalAgent({
+            device_ip: form.ip_address.trim(),
+            port: zkPort,
+            comm_key: form.comm_key?.trim() || undefined,
+            minimal_probe: true,
+            include_users: false,
+            include_attendance_size: false,
+            socket_timeout_ms: 4000,
+          });
+          if (res?.status === 200 && res.data?.ok) {
+            if (applyZkSnapshotToForm(setForm, res.data)) {
+              setTestResult('success');
+              setTestMessage('تم فحص الجهاز عبر بروتوكول ZK من الوكيل المحلي.');
+              return true;
+            }
+            const sn = extractZkSerialFromSnapshot(res.data);
+            if (sn) {
+              setForm((p) => ({
+                ...p,
+                serial_number: sn,
+                firmware_version: res.data.firmware_version != null && String(res.data.firmware_version).trim() !== ''
+                  ? String(res.data.firmware_version)
+                  : p.firmware_version,
+              }));
+              setTestResult('success');
+              setTestMessage('تم فحص الجهاز عبر بروتوكول ZK من الوكيل المحلي.');
+              return true;
+            }
           }
         } catch (e) {
           // ignore and fallthrough to backend relay
