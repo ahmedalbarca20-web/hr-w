@@ -24,3 +24,7 @@ Env required for queue mode
 Vercel + private device IPs (192.168.x)
 - Set on the API project (same place as DATABASE_URL): LOCAL_AGENT_URL (HTTPS tunnel to the LAN PC) and LOCAL_AGENT_TOKEN matching local-agent .env.
 - Without them, production/Vercel returns 503 LOCAL_AGENT_NOT_CONFIGURED for ZK reads on private IPs (fail-fast).
+
+Ops / deploy (no linking-code changes)
+- Repo root: VERCEL-AGENT-SETUP.txt — env checklist, 429/CORS/tunnel notes.
+- Repo root: LINKING-CODE-REFERENCE.txt — which files count as «ربط»; change only when protocol/API paths change.

@@ -1,0 +1,52 @@
+═══════════════════════════════════════════════════════════════════
+  مرجع «كود الربط» — LAN / Vercel / Local Agent / ZK
+  آخر تحديث: 2026-05-10
+═══════════════════════════════════════════════════════════════════
+
+الغرض
+-------
+هذه الملفات تحدد كيف يربط المتصفح بالـ API، والـ API بالوكيل، والوكيل بجهاز
+الشبكة الداخلية. عند طلب «إصلاح Vercel/الوكيل بدون تعديل الربط»، جرّب أولاً
+متغيرات البيئة والنشر (انظر VERCEL-AGENT-SETUP.txt). عدّل الملفات أدناه فقط
+عند تغيير بروتوكول أو مسار API فعلياً.
+
+الواجهة (React)
+----------------
+  frontend/src/api/axios.js
+    — baseURL، company_id على الطلبات، سوبر أدمن والشركة النشطة.
+
+  frontend/src/utils/localAgentRelay.js
+    — متى يُرسل الطلب عبر الـ API بدلاً من localhost:8099.
+
+  frontend/src/api/device.api.js
+    — callLocalAgent، probeDeviceViaAgent، استيراد/سحب عبر الوكيل أو الطابور.
+
+  frontend/src/pages/devices/SyncCenter.jsx
+    — أزرار المزامنة واستدعاءات الـ API المرتبطة بالجهاز.
+
+الخادم (Express)
+-----------------
+  backend/src/services/device.service.js
+    — LOCAL_AGENT_URL / التحقق من IP خاص، تمرير ZK عبر النفق.
+
+  backend/src/controllers/agentJob.controller.js
+    — طابور الوكيل، poll، job-result.
+
+  backend/src/routes/index.js و device.routes.js
+    — تعريف المسارات (ربط المسارات بالـ controllers).
+
+الوكيل المحلي
+-------------
+  local-agent/server.js
+    — /execute، /health، فحص HTTP و ZK.
+
+  local-agent/polling-agent.js
+    — سحب المهام من السحابة وتنفيذها على LAN.
+
+ملاحظة
+-------
+تعديلات سابقة مفيدة للسحابة (ليست «ربطاً» جديداً بل بنية تحتية):
+  — طابور المهام على Postgres/MySQL: جدول agent_jobs (لا يعتمد على ملف على Vercel).
+  — حد الطلبات API_RATE_LIMIT_MAX / سلوك غير الإنتاج في backend/src/app.js.
+
+انتهى الملف.

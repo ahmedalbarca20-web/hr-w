@@ -1,0 +1,88 @@
+═══════════════════════════════════════════════════════════════════
+  إعداد Vercel + الوكيل (حلول بدون تعديل «كود الربط»)
+  راجع أيضاً: LINKING-CODE-REFERENCE.txt — frontend/VERCEL-DEPLOY.txt
+═══════════════════════════════════════════════════════════════════
+
+■ مبدأ عام
+-----------
+• المحلي يعمل لأن المتصفح + الـ API + الوكيل على نفس الشبكة أو localhost.
+• على Vercel: لا يوجد وصول مباشر إلى 192.168.x من السيرفر؛ الاعتماد إما
+  (1) طابور + polling-agent على حاسبة المكتب، أو (2) نفق HTTPS
+  (LOCAL_AGENT_URL) من السحابة إلى الوكيل.
+
+■ نمطان للنشر
+--------------
+أ) مشروع واحد على Vercel (جذر الريبو + vercel.json): الواجهة + /api عبر
+   api/index.js — عندها VITE_API_BASE_URL = نفس النطاق + /api
+   مثال: https://your-app.vercel.app/api
+
+ب) الواجهة على Vercel والـ API على Railway/Render/VPS:
+   VITE_API_BASE_URL = https://api.yourdomain.com/api
+   وعلى الـ API: CLIENT_URL يتضمن رابط الواجهة على Vercel (CORS).
+
+■ متغيرات مشروع الواجهة (Vercel — Environment Variables)
+---------------------------------------------------------
+  VITE_API_BASE_URL     إلزامي — عنوان الـ API + /api (انظر النمط أ أو ب أعلاه).
+  VITE_AGENT_ID         إلزامي لمسار الفحص عبر الطابور على نطاق عام؛ نفس AGENT_ID
+                        على حاسبة الوكيل (مثل office_1).
+
+  بعد أي تغيير: Redeploy من لوحة Vercel (المتغيرات تُحقن وقت build).
+
+■ متغيرات مشروع الـ API (نفس مشروع Vercel أو سيرفر منفصل)
+-----------------------------------------------------------
+  DATABASE_URL / JWT / CLIENT_URL — كما في backend/.env.example
+
+  للوكيل (طابور polling — بدون نفق وارد):
+  AGENT_SHARED_TOKEN     سر مشترك؛ نفس القيمة في .env الوكيل.
+  ALLOWED_AGENT_IDS      مثل office_1 (فاصلة بين عدة معرفات)؛ إن تركت فارغة
+                         يسمح بأي agent_id (أضعف أماناً).
+
+  لنفق relay متزامن (السحابة تتصل بالوكيل عبر HTTPS):
+  LOCAL_AGENT_URL        https://نفق-ثابت-إلى-حاسبة-المكتب
+  LOCAL_AGENT_TOKEN      نفس LOCAL_AGENT_TOKEN على الوكيل
+
+  حد الطلبات (إن واجهت 429 محلياً أو في اختبار مكثف):
+  API_RATE_LIMIT_MAX     رقم أعلى من 500 في الإنتاج إن لزم.
+
+■ حاسبة المكتب — الوكيل
+-------------------------
+  انسخ local-agent/.env.example إلى .env وعدّل:
+
+  CLOUD_API_BASE_URL     عنوان الـ API المنشور + /api (يجب أن يصل من المكتب
+                         إلى الإنترنت — جرّب curl من تلك الحاسبة).
+  AGENT_ID               = VITE_AGENT_ID على الواجهة.
+  AGENT_SHARED_TOKEN      = نفس AGENT_SHARED_TOKEN على الـ API.
+  LOCAL_AGENT_PORT       8099 (أو حسب التثبيت).
+  LOCAL_AGENT_TOKEN      اختياري على LAN؛ يجب أن يطابق LOCAL_AGENT_TOKEN على
+                         الـ API إن استخدمت نفق relay.
+
+  شغّل: خادم الوكيل (server.js أو التثبيت كخدمة) + node local-agent/polling-agent.js
+  (أو ما يعادله في التثبيت الجاهز).
+
+■ أخطاء شائعة (بدون لمس كود الربط)
+------------------------------------
+  DEPLOYMENT_NOT_FOUND   رابط نشرة Vercel قديمة — استخدم رابط Production أو
+                         أعد النشر من لوحة Vercel.
+
+  CORS                   أضف أصل الواجهة في CLIENT_URL على الـ API.
+
+  503 LOCAL_AGENT_*      على أجهزة 192.168.x من السحابة: أضف طابور الوكيل
+                         (متغيرات أعلاه) أو نفق LOCAL_AGENT_URL.
+
+  429 Too Many Requests  في التطوير: أعد تشغيل الـ API؛ في الإنتاج: API_RATE_LIMIT_MAX.
+                         انظر backend/.env.example.
+
+  Job not found / طابور لا يعمل على Vercel   تأكد أن قاعدة البيانات Postgres/MySQL
+                         متصلة وأن جدول agent_jobs يُنشأ بعد أول deploy (تم في
+                         الكود — لا يحتاج تعديل ربط).
+
+  ETIMEDOUT من الوكيل إلى 192.168.x   من حاسبة الوكيل نفسها: ping و
+                         Test-NetConnection … -Port 4370 — شبكة / جدار / عزل Wi‑Fi.
+
+■ ملخص سريع
+------------
+  واجهة Vercel: VITE_API_BASE_URL + VITE_AGENT_ID
+  API: AGENT_SHARED_TOKEN + ALLOWED_AGENT_IDS + CLIENT_URL + DB
+  مكتب: الوكيل 8099 + polling-agent + CLOUD_API_BASE_URL + نفس التوكن والمعرف
+
+انتهى الملف.
