@@ -16,6 +16,7 @@ require('dotenv').config();
 const bcrypt     = require('bcryptjs');
 const { sequelize } = require('../src/config/db');
 const { QueryTypes } = require('sequelize');
+const Company = require('../src/models/company.model');
 
 const EMAIL    = process.env.SEED_EMAIL    || 'admin@hr.com';
 const PASSWORD = process.env.SEED_PASSWORD || 'Admin@1234';
@@ -44,6 +45,15 @@ async function run() {
       );
       companyId = result;
       console.log(`✅  Company created  (id=${companyId})`);
+    }
+
+    try {
+      await Company.update(
+        { onboarding_completed_at: new Date(), onboarding_last_step: 4 },
+        { where: { id: companyId } },
+      );
+    } catch {
+      /* older DB without onboarding columns */
     }
 
     // ── 2. Roles ─────────────────────────────────────────────────

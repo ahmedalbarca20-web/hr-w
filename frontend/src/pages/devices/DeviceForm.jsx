@@ -60,8 +60,6 @@ export default function DeviceForm() {
   const [rangeFrom, setRangeFrom] = useState('1');
   const [rangeTo, setRangeTo] = useState('254');
   const [rangeHits, setRangeHits] = useState([]);
-  /** On failed ZK probe, holds raw payload for debugging (optional JSON block). */
-  const [zkDebug, setZkDebug] = useState(null);
   const saveLockRef = useRef(false);
 
   useEffect(() => {
@@ -165,7 +163,6 @@ export default function DeviceForm() {
     setTesting(true);
     setTestResult(null);
     setTestMessage('');
-    setZkDebug(null);
     const portRaw = form.port?.toString().trim();
     const zkPort = Number.isFinite(Number(portRaw)) && Number(portRaw) > 0 ? Number(portRaw) : 4370;
 
@@ -307,7 +304,6 @@ export default function DeviceForm() {
             ? 'تعذّر تعبئة الرقم التسلسلي تلقائياً رغم وصول بيانات من الجهاز. انسخ الرقم يدوياً إلى الحقل.'
             : 'اتصل بالجهاز (ZK) لكن لم يُرجع رقمًا تسلسليًا معروفًا. تم أيضًا تجربة فحص Local Agent وواجهة الويب تلقائياً. جرّب إدخال الرقم من ملصق الجهاز إن لزم.',
         );
-        setZkDebug(z);
         return;
       }
 
@@ -316,7 +312,6 @@ export default function DeviceForm() {
 
       setTestResult('error');
       setTestMessage(zkFailureMessage(z));
-      setZkDebug(z || { ok: false });
     } catch (err) {
       setTestResult('error');
       let apiErr = err.response?.data?.error || err.response?.data?.message;

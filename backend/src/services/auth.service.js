@@ -25,6 +25,7 @@ const {
 } = require('../config/jwt');
 const { enforceCompanyActive } = require('./company-status.service');
 const { getCompanyEnabledFeatures } = require('./company-feature.service');
+const setupSvc = require('./setup.service');
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,11 @@ const buildSession = async (user) => {
 
   await saveRefreshToken(user, refreshToken);
 
+  const onboarding = await setupSvc.onboardingFlagsForUser({
+    company_id: user.company_id,
+    role: user.role,
+  });
+
   return {
     accessToken,
     refreshToken,
@@ -100,6 +106,8 @@ const buildSession = async (user) => {
       is_super_admin: payload.is_super_admin,
       permissions   : payload.permissions,
       company_features: payload.company_features,
+      onboarding_required: onboarding.onboarding_required,
+      onboarding_last_step: onboarding.onboarding_last_step,
     },
   };
 };

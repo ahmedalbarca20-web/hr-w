@@ -320,9 +320,20 @@ async function updateDevice(id, company_id, data) {
 }
 
 async function deactivateDevice(id, company_id) {
-  const dev = await Device.findOne({ where: { id, company_id } });
+  if (company_id == null || !Number.isFinite(Number(company_id)) || Number(company_id) < 1) {
+    const err = new Error('company_id is required (select a company or use a company-scoped account)');
+    err.statusCode = 422;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+  const cid = Number(company_id);
+  const dev = await Device.findOne({ where: { id, company_id: cid } });
   if (!dev) throw notFound(id);
-  await dev.update({ status: 'INACTIVE' });
+  const sequelize = Device.sequelize;
+  await sequelize.transaction(async (tx) => {
+    await DeviceLog.destroy({ where: { device_id: id, company_id: cid }, transaction: tx });
+    await dev.destroy({ transaction: tx });
+  });
 }
 
 /**

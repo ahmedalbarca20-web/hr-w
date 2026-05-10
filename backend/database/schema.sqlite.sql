@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS companies (
     currency    TEXT        NOT NULL DEFAULT 'SAR',
     timezone    TEXT        NOT NULL DEFAULT 'Asia/Riyadh',
     is_active   INTEGER     NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
+    onboarding_completed_at TEXT NULL,
+    onboarding_last_step INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT        NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT        NOT NULL DEFAULT (datetime('now'))
 );

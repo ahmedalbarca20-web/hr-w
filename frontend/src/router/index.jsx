@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import PrivateRoute from './PrivateRoute';
+import OnboardingGate from './OnboardingGate';
 import RoleRoute from './RoleRoute';
 import FeatureRoute from './FeatureRoute';
 import PrivateLayout from '../components/layout/PrivateLayout';
@@ -35,11 +36,14 @@ const Reports          = lazy(() => import('../pages/reports/Reports'));
 
 // Employee Self-Service
 const EmployeeProfile  = lazy(() => import('../pages/employees/EmployeeProfile'));
+const OnboardingWizard   = lazy(() => import('../pages/setup/OnboardingWizard'));
 
 function Private({ children }) {
   return (
     <PrivateRoute>
-      <PrivateLayout>{children}</PrivateLayout>
+      <OnboardingGate>
+        <PrivateLayout>{children}</PrivateLayout>
+      </OnboardingGate>
     </PrivateRoute>
   );
 }
@@ -51,6 +55,14 @@ export default function AppRoutes() {
         {/* ── Public Routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/employee-login" element={<EmployeeLogin />} />
+
+        <Route path="/setup" element={
+          <PrivateRoute>
+            <Suspense fallback={<PageLoader />}>
+              <OnboardingWizard />
+            </Suspense>
+          </PrivateRoute>
+        } />
 
         {/* ── All Authenticated Users */}
         <Route path="/" element={<Private><Dashboard /></Private>} />

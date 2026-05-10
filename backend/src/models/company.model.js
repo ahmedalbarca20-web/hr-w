@@ -71,6 +71,20 @@ const Company = sequelize.define('Company', {
     allowNull : true,
     comment   : 'Path to the uploaded contract document',
   },
+  /** First-run wizard: NULL until the company admin finishes guided setup. */
+  onboarding_completed_at: {
+    type      : DataTypes.DATE,
+    allowNull : true,
+  },
+  /**
+   * Last finished wizard stage (persisted for resume):
+   * 0 = none, 1 = working hours, 2 = device, 3 = employees, 4 = completion acknowledged.
+   */
+  onboarding_last_step: {
+    type         : DataTypes.TINYINT,
+    allowNull    : false,
+    defaultValue : 0,
+  },
 }, {
   tableName  : 'companies',
   indexes    : [{ fields: ['is_active'] }],

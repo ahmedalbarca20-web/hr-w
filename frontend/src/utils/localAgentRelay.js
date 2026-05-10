@@ -40,13 +40,13 @@ export function friendlyLocalAgentRelayError(status, payload) {
 	const err = String(payload?.error || payload?.message || '');
 	const code = String(payload?.code || '');
 	if (status === 503 && (code === 'AGENT_RELAY_NOT_CONFIGURED' || code === 'LOCAL_AGENT_NOT_CONFIGURED' || /AGENT_RELAY|LOCAL_AGENT_URL/i.test(err))) {
-		return 'تعذّر الاتصال بجهاز البصمة عبر الشبكة الداخلية. تأكد أن «وكيل المكتب» يعمل على ويندوز وأن المسؤول عيّن AGENT_RELAY_DEFAULT_ID على الخادم و VITE_AGENT_ID على الواجهة، أو نفق LOCAL_AGENT_URL (قديم).';
+		return 'تعذّر الوصول لجهاز البصمة عبر شبكتك. تأكد أن برنامج المكتب على جهاز ويندوز يعمل وأن مسؤول النظام أكمل إعداد الاتصال.';
 	}
 	if (status === 401 || status === 403) {
 		return 'انتهت الجلسة أو لا تملك صلاحية. سجّل الدخول من جديد.';
 	}
 	if (status === 502 || status === 504) {
-		return 'الخادم لم يصل إلى وكيل الشبكة. تحقق أن الوكيل يعمل وأن الرابط العام (النفق) لا يزال فعّالاً.';
+		return 'لم يتم الوصول لجهاز البصمة عبر الشبكة. تحقق من الاتصال وحاول مرة أخرى، أو راجع مسؤول النظام.';
 	}
 	if (err && err.length < 300) return err;
 	return 'تعذّر تنفيذ العملية عبر وكيل الشبكة. جرّب لاحقاً أو اتصل بمسؤول النظام.';

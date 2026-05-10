@@ -74,6 +74,8 @@ export function AuthProvider({ children }) {
                           ? raw.role.permissions
                           : (raw.permissions ?? []),
           company_features: Array.isArray(raw.company_features) ? raw.company_features : [],
+          onboarding_required: Boolean(raw.onboarding_required),
+          onboarding_last_step: Number(raw.onboarding_last_step || 0),
         };
         localStorage.setItem('user', JSON.stringify(normalized));
         setUser(normalized);
@@ -123,6 +125,8 @@ export function AuthProvider({ children }) {
     const normalizedUser = {
       ...payload.user,
       company_features: Array.isArray(payload?.user?.company_features) ? payload.user.company_features : [],
+      onboarding_required: Boolean(payload?.user?.onboarding_required),
+      onboarding_last_step: Number(payload?.user?.onboarding_last_step || 0),
     };
     localStorage.setItem('access_token', token);
     localStorage.setItem('user', JSON.stringify(normalizedUser));
@@ -177,8 +181,36 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  const refreshProfile = useCallback(async () => {
+    try {
+      const { data } = await authApi.me();
+      const raw = data.data;
+      if (!raw) return;
+      const normalized = {
+        id            : raw.id,
+        email         : raw.email,
+        company_id    : raw.company_id ?? null,
+        employee_id   : raw.employee_id ?? null,
+        role          : (typeof raw.role === 'object' ? raw.role?.name : raw.role) ?? '',
+        is_super_admin: typeof raw.role === 'object'
+          ? raw.role?.name === 'SUPER_ADMIN'
+          : raw.is_super_admin ?? false,
+        permissions   : Array.isArray(raw.role?.permissions)
+          ? raw.role.permissions
+          : (raw.permissions ?? []),
+        company_features: Array.isArray(raw.company_features) ? raw.company_features : [],
+        onboarding_required: Boolean(raw.onboarding_required),
+        onboarding_last_step: Number(raw.onboarding_last_step || 0),
+      };
+      localStorage.setItem('user', JSON.stringify(normalized));
+      setUser(normalized);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, initializing, login, loginEmployee, logout, hasFeature, isAuth: !!user }}>
+    <AuthContext.Provider value={{ user, loading, initializing, login, loginEmployee, logout, refreshProfile, hasFeature, isAuth: !!user }}>
       {children}
     </AuthContext.Provider>
   );

@@ -25,7 +25,16 @@ export default function Login({ initialMode = 'company' }) {
     const res = mode === 'company'
       ? await login(form.email?.trim(), form.password, { company_code: code })
       : await loginEmployee((form.employee_code || '').trim(), form.password, code);
-    if (res.ok) navigate('/');
+    if (res.ok) {
+      try {
+        const raw = localStorage.getItem('user');
+        const u = raw ? JSON.parse(raw) : null;
+        if (u?.onboarding_required) navigate('/setup', { replace: true });
+        else navigate('/', { replace: true });
+      } catch {
+        navigate('/', { replace: true });
+      }
+    }
     else setError(res.msg);
   };
 

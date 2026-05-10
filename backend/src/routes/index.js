@@ -13,6 +13,7 @@ const deviceRoutes        = require('./device.routes');
 const shiftsRoutes        = require('./shifts.routes');
 const processRoutes       = require('./process.routes');
 const reportRoutes        = require('./report.routes');
+const setupRoutes         = require('./setup.routes');
 const notificationRoutes  = require('./notification.routes');
 const agentJobController  = require('../controllers/agentJob.controller');
 const agentActivationController = require('../controllers/agentActivation.controller');
@@ -172,6 +173,9 @@ router.use('/notifications', notificationRoutes);
 
 // Auth module
 router.use('/auth', authRoutes);
+
+// First-run guided setup (company admin / HR)
+router.use('/setup', setupRoutes);
 
 // Super-Admin: company management
 router.use('/companies', companyRoutes);

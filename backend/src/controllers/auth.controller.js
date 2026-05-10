@@ -191,6 +191,8 @@ const logout = async (req, res) => {
  * GET /auth/me
  * Requires: valid access token.
  */
+const setupSvc = require('../services/setup.service');
+
 const getMe = async (req, res) => {
   const user = await authService.getMe(req.user.sub, req.user.company_id);
   const plain = typeof user?.toJSON === 'function' ? user.toJSON() : user;
@@ -201,6 +203,12 @@ const getMe = async (req, res) => {
     } catch (_) { /* keep token list */ }
   }
   plain.company_features = companyFeatures;
+  const ob = await setupSvc.onboardingFlagsForUser({
+    company_id: plain.company_id,
+    role: plain.role,
+  });
+  plain.onboarding_required = ob.onboarding_required;
+  plain.onboarding_last_step = ob.onboarding_last_step;
   return sendSuccess(res, plain);
 };
 

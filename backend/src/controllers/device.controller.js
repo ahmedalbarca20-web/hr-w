@@ -306,7 +306,7 @@ const updateDevice = asyncHandler(async (req, res) => {
 const deactivateDevice = asyncHandler(async (req, res) => {
   const id = parseId(req, res); if (id === null) return;
   await svc.deactivateDevice(id, resolveCompanyId(req));
-  sendSuccess(res, null, 'Device deactivated');
+  sendSuccess(res, null, 'Device deleted');
 });
 
 const rotateApiKey = asyncHandler(async (req, res) => {

@@ -105,6 +105,8 @@ CREATE TABLE companies (
   contract_end     DATE            NULL,
   contract_doc     VARCHAR(500)    NULL,
   login_password_hash VARCHAR(255) NULL,
+  onboarding_completed_at TIMESTAMP WITHOUT TIME ZONE NULL,
+  onboarding_last_step SMALLINT NOT NULL DEFAULT 0,
   created_at       TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
   updated_at       TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC')
 );

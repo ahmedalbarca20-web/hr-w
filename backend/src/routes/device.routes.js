@@ -27,7 +27,7 @@
  *   POST   /:id/test-ingest        HR: insert one test log (same pipeline as /push)
  *   GET    /:id                    Get device details
  *   PUT    /:id                    Update device (name, location, mode, type, etc.)
- *   DELETE /:id                    Deactivate device
+ *   DELETE /:id                    Delete device (and its raw logs)
  *   POST   /:id/rotate-key         Rotate device API key
  *
  * ── Raw log queries (HR|ADMIN) ───────────────────────────────────────────────

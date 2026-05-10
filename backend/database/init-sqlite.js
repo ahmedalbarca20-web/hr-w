@@ -51,7 +51,7 @@ async function run() {
       companyId = existing.id;
     } else {
       await sequelize.query(
-        "INSERT INTO companies (name, name_ar, currency, timezone, is_active, created_at, updated_at) VALUES ('', '', 'IQD', 'Asia/Baghdad', 1, datetime('now'), datetime('now'))"
+        "INSERT INTO companies (name, name_ar, currency, timezone, is_active, onboarding_completed_at, onboarding_last_step, created_at, updated_at) VALUES ('', '', 'IQD', 'Asia/Baghdad', 1, datetime('now'), 4, datetime('now'), datetime('now'))"
       );
       [{ id: companyId }] = await sequelize.query(
         'SELECT id FROM companies ORDER BY id DESC LIMIT 1',

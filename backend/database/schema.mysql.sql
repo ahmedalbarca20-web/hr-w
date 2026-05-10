@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS companies (
     currency        CHAR(3)         NOT NULL DEFAULT 'SAR',
     timezone        VARCHAR(60)     NOT NULL DEFAULT 'Asia/Riyadh',
     is_active       TINYINT(1)      NOT NULL DEFAULT 1,
+    onboarding_completed_at DATETIME NULL,
+    onboarding_last_step TINYINT UNSIGNED NOT NULL DEFAULT 0,
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id)
