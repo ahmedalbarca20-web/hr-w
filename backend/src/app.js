@@ -123,10 +123,14 @@ const loginLimiter = rateLimit({
 
 app.use('/api/auth/login', loginLimiter);
 
-// General API limiter
+// General API limiter (per IP, sliding window). Dev SPA + polling burns 500/15m quickly → higher default off production.
+const parsedApiMax = Number.parseInt(String(process.env.API_RATE_LIMIT_MAX || '').trim(), 10);
+const defaultApiMax = process.env.NODE_ENV === 'production' ? 500 : 20000;
+const apiMax = Number.isFinite(parsedApiMax) && parsedApiMax > 0 ? parsedApiMax : defaultApiMax;
+
 const apiLimiter = rateLimit({
   windowMs        : 15 * 60 * 1000,
-  max             : 500,
+  max             : apiMax,
   standardHeaders : true,
   legacyHeaders   : false,
 });
