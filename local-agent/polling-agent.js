@@ -1,6 +1,18 @@
 'use strict';
 
 const path = require('path');
+const { parseArgs: parseActivateArgs } = require('./activate-cli');
+
+if (parseActivateArgs(process.argv).activate) {
+  require('./activate-cli')
+    .run(process.argv)
+    .then(() => process.exit(process.exitCode || 0))
+    .catch((e) => {
+      // eslint-disable-next-line no-console
+      console.error(e);
+      process.exit(1);
+    });
+} else {
 const fs = require('fs');
 const os = require('os');
 // Always load local-agent/.env (cwd may be repo root).
@@ -8,6 +20,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const { loadAgentConfig, DEFAULT_WIN_CONFIG_DIR } = require('./config');
 const axios = require('axios');
+const { agentLog } = require('./logger');
 const { app, log, runProbe, DEFAULT_TIMEOUT_MS } = require('./server');
 
 const CFG = loadAgentConfig();
@@ -41,6 +54,7 @@ if (!AGENT_SHARED_TOKEN) {
 
 app.listen(PORT, '0.0.0.0', () => {
   log('agent_http_started', { port: PORT });
+  agentLog('INFO', 'Agent HTTP started', { port: PORT });
 });
 
 function sleep(ms) {
@@ -127,6 +141,7 @@ async function fetchJobsOnce() {
     const jobs = Array.isArray(resp.data?.jobs) ? resp.data.jobs : [];
     if (jobs.length > 0) {
       log('poll_jobs_found', { count: jobs.length });
+      agentLog('INFO', 'Polling jobs', { count: jobs.length });
     }
     return jobs;
   } catch (err) {
@@ -172,6 +187,7 @@ async function sendResult(job, status, result, error) {
         pending.push({ at: new Date().toISOString(), body });
         savePendingResults(pending);
         log('job_result_queued_offline', { job_id: job.job_id });
+        agentLog('WARN', 'Offline retry queued', { job_id: job.job_id });
         return;
       }
     }
@@ -247,6 +263,7 @@ async function runExecuteViaLocalHttp(job) {
 
 async function handleJob(job) {
   const action = String(job.action || '').trim().toLowerCase();
+  agentLog('INFO', `Executing ${action}`, { job_id: job.job_id });
   if (action === 'probe') {
     const ip = String(job.device_ip || '').trim();
     if (!ip) {
@@ -366,5 +383,7 @@ startAutoEnqueueIfConfigured();
 
 loop().catch((err) => {
   log('poller_fatal', { message: String(err?.message || err), stack: err?.stack });
+  agentLog('ERROR', 'Poller fatal', { message: String(err?.message || err) });
   process.exitCode = 1;
 });
+}

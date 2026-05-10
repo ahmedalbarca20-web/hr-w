@@ -50,24 +50,32 @@ Environment variables **override** file values when set.
 - Exponential backoff on poll errors (up to 60s).
 - Failed `job-result` posts are stored in `%ProgramData%\AttendanceAgent\pending-job-results.json` and retried.
 
-## Windows Service
+## Windows Service (production — no Node on the office PC)
 
-1. Install Node.js 20 LTS on the office PC.
-2. Copy the `local-agent` folder (or your built release).
-3. Elevated PowerShell:
+The packaged executable registers as a Windows service via `sc.exe` (see `scripts/install-service-sc.ps1`). The **Inno Setup** installer runs activation and installs the service automatically.
+
+### Developer-only (repo checkout with Node)
 
 ```powershell
 cd C:\Path\To\local-agent
 npm ci
-npm install node-windows
-node install-windows-service.js
+$env:ATTENDANCE_AGENT_EXE = "$(Resolve-Path .\dist\AttendanceAgent.exe)"
+npm run install-service
 ```
 
-Uninstall (elevated): use `node-windows` uninstall script or `sc delete AttendanceAgent` after stopping the service.
+Or use `node install-windows-service.js` with `ATTENDANCE_AGENT_EXE` pointing at `dist\AttendanceAgent.exe` after `npm run build-agent`.
+
+Uninstall (elevated): stop the service, then `sc delete AttendanceAgent`, or use the installer uninstaller.
 
 ## Installer (Inno Setup)
 
-See `installer/setup.iss`. Build with [Inno Setup](https://jrsoftware.org/isinfo.php); adjust `Source` paths to your distribution layout. The script copies files, writes `config.json` from wizard input, installs the service, and starts it.
+1. On a build machine: `cd local-agent` then `npm run build-agent` (produces `dist\AttendanceAgent.exe`).
+2. Install [Inno Setup 6](https://jrsoftware.org/isinfo.php).
+3. Open `installer\setup.iss` and compile (or run `ISCC.exe installer\setup.iss` from the `local-agent` folder).
+
+Output: `installer\dist\AttendanceAgentSetup.exe`. The wizard collects **API base URL** and **activation code**, calls `AttendanceAgent.exe --activate … --api-base …` (writes `%ProgramData%\AttendanceAgent\config.json`), then runs `install-service-sc.ps1` to create and start the **AttendanceAgent** service.
+
+**Silent install:** `AttendanceAgentSetup.exe /VERYSILENT /SUPPRESSMSGBOXES /APIBASE=https://host/api /ACTIVATION=OFFICE-ABCD-1234`
 
 ## Migration from `LOCAL_AGENT_URL` (inbound tunnel)
 

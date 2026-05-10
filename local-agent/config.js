@@ -57,4 +57,24 @@ function loadAgentConfig(opts = {}) {
   };
 }
 
-module.exports = { loadAgentConfig, DEFAULT_WIN_CONFIG_DIR };
+/**
+ * @param {string} dir
+ * @param {{ backend_url: string, agent_id: string, token: string, company_id?: number|null, poll_interval_ms?: number, heartbeat_interval_ms?: number }} data
+ */
+function writeAgentConfigFile(dir, data) {
+  const d = String(dir || DEFAULT_WIN_CONFIG_DIR).trim();
+  if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+  const out = {
+    backend_url: String(data.backend_url || '').trim().replace(/\/+$/, ''),
+    agent_id: String(data.agent_id || '').trim(),
+    token: String(data.token || '').trim(),
+    company_id: data.company_id != null && Number.isFinite(Number(data.company_id)) ? Number(data.company_id) : null,
+    poll_interval_ms: Number.isFinite(Number(data.poll_interval_ms)) ? Number(data.poll_interval_ms) : 3000,
+    heartbeat_interval_ms: Number.isFinite(Number(data.heartbeat_interval_ms))
+      ? Number(data.heartbeat_interval_ms)
+      : 60000,
+  };
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify(out, null, 2), 'utf8');
+}
+
+module.exports = { loadAgentConfig, writeAgentConfigFile, DEFAULT_WIN_CONFIG_DIR };

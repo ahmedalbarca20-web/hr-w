@@ -245,6 +245,26 @@ const connectDB = async () => {
     }
   };
 
+  const ensureAgentActivationCodesTable = async () => {
+    try {
+      await qi.describeTable('agent_activation_codes');
+    } catch {
+      await qi.createTable('agent_activation_codes', {
+        id: { type: DataTypes.STRING(32), allowNull: false, primaryKey: true },
+        code: { type: DataTypes.STRING(80), allowNull: false, unique: true },
+        company_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+        agent_id: { type: DataTypes.STRING(64), allowNull: false },
+        agent_token: { type: DataTypes.STRING(512), allowNull: true },
+        poll_interval_ms: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 3000 },
+        expires_at: { type: DataTypes.DATE, allowNull: true },
+        revoked_at: { type: DataTypes.DATE, allowNull: true },
+        last_used_at: { type: DataTypes.DATE, allowNull: true },
+        created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal('CURRENT_TIMESTAMP') },
+        updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal('CURRENT_TIMESTAMP') },
+      });
+    }
+  };
+
   const ensureCompanyFeaturesTable = async () => {
     try {
       await qi.describeTable('company_features');
@@ -399,6 +419,7 @@ const connectDB = async () => {
     await ensureCompanyFeaturesTable();
     await ensureAgentJobsTable();
     await ensureAgentHeartbeatsTable();
+    await ensureAgentActivationCodesTable();
     if (dialect === 'postgres') {
       console.log('[DB] Connected to PostgreSQL.');
     } else {

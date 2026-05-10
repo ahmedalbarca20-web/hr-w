@@ -10,10 +10,13 @@ let zktecoSocket = null;
 
 function getZktecoSocket() {
   if (!zktecoSocket) {
-    // Lazy-load to keep probe-only builds (pkg exe) independent from backend files.
-    // list_users / pull_attendance still require backend service availability.
-    // eslint-disable-next-line global-require, import/no-dynamic-require
-    zktecoSocket = require('../backend/src/services/zktecoSocket.service');
+    try {
+      // eslint-disable-next-line global-require, import/no-dynamic-require
+      zktecoSocket = require('./pkg-stub/zktecoSocket.service');
+    } catch {
+      // eslint-disable-next-line global-require, import/no-dynamic-require
+      zktecoSocket = require(path.join(__dirname, '..', 'backend', 'src', 'services', 'zktecoSocket.service'));
+    }
   }
   return zktecoSocket;
 }

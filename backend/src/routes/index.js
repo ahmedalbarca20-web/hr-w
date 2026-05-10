@@ -15,6 +15,8 @@ const processRoutes       = require('./process.routes');
 const reportRoutes        = require('./report.routes');
 const notificationRoutes  = require('./notification.routes');
 const agentJobController  = require('../controllers/agentJob.controller');
+const agentActivationController = require('../controllers/agentActivation.controller');
+const rateLimit = require('express-rate-limit');
 
 const { authenticate }  = require('../middleware/auth.middleware');
 const { requireRole, requireFeature } = require('../middleware/role.middleware');
@@ -31,6 +33,16 @@ const router = Router();
 
 // Health check (no auth required)
 router.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
+
+/** Windows installer / first-run: exchange activation code for agent_id + token (no JWT). */
+const agentActivateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many activation attempts. Try again later.', code: 'RATE_LIMIT' },
+});
+router.post('/agent/activate', agentActivateLimiter, agentActivationController.activate);
 
 /** LAN device probe via Local Agent (JWT + devices feature). Body: { device_ip, timeout_ms? } */
 router.post(

@@ -21,7 +21,9 @@ try {
   process.exit(1);
 }
 
-const scriptPath = path.join(__dirname, 'polling-agent.js');
+const scriptPath = process.env.ATTENDANCE_AGENT_EXE
+  ? path.resolve(process.env.ATTENDANCE_AGENT_EXE)
+  : path.join(__dirname, 'polling-agent.js');
 
 const svc = new Service({
   name: 'AttendanceAgent',

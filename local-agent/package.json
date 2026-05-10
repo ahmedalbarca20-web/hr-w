@@ -7,17 +7,29 @@
   "scripts": {
     "start": "node polling-agent.js",
     "dev": "node polling-agent.js",
+    "prepare-pkg": "node scripts/prepare-pkg.cjs",
+    "build-agent": "node scripts/prepare-pkg.cjs && pkg polling-agent.js --targets node18-win-x64 --output dist/AttendanceAgent.exe",
     "install-service": "node install-windows-service.js",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:restart": "pm2 restart zk-agent",
     "pm2:logs": "pm2 logs zk-agent",
-    "build:exe": "pkg polling-agent.js --targets node18-win-x64 --output dist/hr-local-agent.exe"
+    "build:exe": "npm run build-agent",
+    "build-installer": "ISCC installer\\setup.iss"
   },
   "dependencies": {
     "axios": "^1.11.0",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
-    "iconv-lite": "^0.7.0"
+    "iconv-lite": "^0.7.0",
+    "zkteco-js": "^1.7.1"
+  },
+  "pkg": {
+    "assets": [
+      "pkg-stub/**/*"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ]
   },
   "devDependencies": {
     "pkg": "^5.8.1"
