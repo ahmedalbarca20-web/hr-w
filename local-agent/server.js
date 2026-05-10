@@ -22,7 +22,10 @@ app.use(express.json({ limit: '1mb' }));
 
 const PORT = Number(process.env.LOCAL_AGENT_PORT || 8099);
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-const DEFAULT_TIMEOUT_MS = 800;
+/** Default HTTP probe budget (LAN); capped by MAX_PROBE_TIMEOUT_MS below. */
+const DEFAULT_TIMEOUT_MS = 4000;
+/** LAN HTTP probe must be allowed to exceed 1s — many ZK panels respond slowly or after Wi‑Fi jitter. */
+const MAX_PROBE_TIMEOUT_MS = 15000;
 
 if (!TOKEN) {
   // Run in permissive localhost-only mode when no token is provided.
@@ -166,7 +169,10 @@ app.get('/health', (req, res) => {
 });
 
 async function runProbe({ ip, port, timeoutMsRaw }) {
-  const timeoutMs = Math.min(1000, Math.max(200, Number.isFinite(timeoutMsRaw) ? timeoutMsRaw : DEFAULT_TIMEOUT_MS));
+  const timeoutMs = Math.min(
+    MAX_PROBE_TIMEOUT_MS,
+    Math.max(200, Number.isFinite(timeoutMsRaw) ? timeoutMsRaw : DEFAULT_TIMEOUT_MS),
+  );
   const host = toHostLiteral(ip);
   const path = '/cgi-bin/getoption.cgi?action=getoption&kind=SerialNumber';
   const url = `http://${host}:${port}${path}`;
@@ -208,7 +214,7 @@ async function runProbe({ ip, port, timeoutMsRaw }) {
         ? 'Device timeout'
         : (reachableByReset ? 'Device reachable but closed connection before serial response' : msg),
       hint: isTimeout
-        ? 'تحقق من IP الجهاز والمنفذ وأن الجهاز online على نفس LAN'
+        ? 'تحقق من IP والشبكة وجدار الحماية. لوحة الويب غالباً على المنفذ 80؛ إن كان الجهاز ZK فقط انتظر خطوة فحص 4370 أو جرّب «اختبار الاتصال» مرة أخرى بعد زيادة المهلة. — Web UI often on :80; pure-ZK devices may need the ZK probe step (4370).'
         : (reachableByReset ? 'يمكن المتابعة وحفظ الجهاز وإدخال السيريال يدويا' : 'تحقق من الشبكة والجدار الناري'),
     };
     log(

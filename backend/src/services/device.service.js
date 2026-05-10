@@ -1840,7 +1840,11 @@ async function probeDeviceViaAgentGateway(body) {
   const base = localAgentBaseUrl();
   const token = localAgentAuthToken();
   const device_ip = String(body?.device_ip || '').trim();
-  const timeout_ms = Math.min(1000, Math.max(200, Number(body?.timeout_ms) || 800));
+  const isVercel = process.env.VERCEL === '1';
+  /** Vercel: keep agent HTTP probe short; local/LAN API: allow slower device panels. */
+  const timeout_ms = isVercel
+    ? Math.min(1000, Math.max(200, Number(body?.timeout_ms) || 800))
+    : Math.min(15000, Math.max(200, Number(body?.timeout_ms) || 4000));
 
   if (!device_ip) {
     const err = new Error('device_ip is required');
@@ -1856,7 +1860,7 @@ async function probeDeviceViaAgentGateway(body) {
   }
 
   const controller = new AbortController();
-  const cloudBudgetMs = 2500;
+  const cloudBudgetMs = isVercel ? 2500 : Math.min(20000, timeout_ms + 2500);
   const t = setTimeout(() => controller.abort(), cloudBudgetMs);
   try {
     const resp = await fetch(`${base}/execute`, {
