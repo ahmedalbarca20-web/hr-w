@@ -9,7 +9,9 @@
  *   3. Start HTTP server
  */
 
-require('dotenv').config();
+const path = require('path');
+// Always load backend/.env even when `node backend/server.js` is run from repo root (cwd ≠ backend).
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const app           = require('./src/app');
 const { connectDB } = require('./src/config/db');

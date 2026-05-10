@@ -7,7 +7,9 @@
  * making it importable in tests without binding a port.
  */
 
-require('dotenv').config();
+const path = require('path');
+// Vercel serverless (api/index.js) and tests: cwd may be repo root — load backend/.env explicitly.
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const express      = require('express');
 const helmet       = require('helmet');
@@ -138,7 +140,6 @@ const apiLimiter = rateLimit({
 app.use('/api', apiLimiter);
 
 // ── Static uploads (same root as multer — on Vercel this is under /tmp) ───
-const path = require('path');
 const { getUploadsRoot } = require('./config/upload.paths');
 app.use(
   '/uploads',
