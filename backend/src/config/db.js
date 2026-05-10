@@ -207,6 +207,28 @@ const connectDB = async () => {
       });
     }
   };
+  const ensureAgentJobsTable = async () => {
+    try {
+      await qi.describeTable('agent_jobs');
+    } catch {
+      await qi.createTable('agent_jobs', {
+        id: { type: DataTypes.STRING(32), allowNull: false, primaryKey: true },
+        agent_id: { type: DataTypes.STRING(64), allowNull: false },
+        action: { type: DataTypes.STRING(40), allowNull: false },
+        payload: { type: DataTypes.JSON, allowNull: false },
+        status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'pending' },
+        error: { type: DataTypes.JSON, allowNull: true },
+        result: { type: DataTypes.JSON, allowNull: true },
+        timeout_ms: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 800 },
+        started_at: { type: DataTypes.DATE, allowNull: true },
+        completed_at: { type: DataTypes.DATE, allowNull: true },
+        created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal('CURRENT_TIMESTAMP') },
+        updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal('CURRENT_TIMESTAMP') },
+      });
+      await qi.addIndex('agent_jobs', ['agent_id', 'status'], { name: 'agent_jobs_agent_status_idx' });
+    }
+  };
+
   const ensureCompanyFeaturesTable = async () => {
     try {
       await qi.describeTable('company_features');
@@ -345,6 +367,7 @@ const connectDB = async () => {
     await ensureAttendanceRequestsTable();
     await ensurePushSubscriptionsTable();
     await ensureCompanyFeaturesTable();
+    // agent_jobs: created by sequelize.sync from AgentJob model (SQLite dev).
     // Sync with force:false — creates only missing tables, never drops
     await sequelize.sync({ force: false });
     console.log('[DB] SQLite database synced and ready.');
@@ -358,6 +381,7 @@ const connectDB = async () => {
     await ensureAttendanceRequestsTable();
     await ensurePushSubscriptionsTable();
     await ensureCompanyFeaturesTable();
+    await ensureAgentJobsTable();
     if (dialect === 'postgres') {
       console.log('[DB] Connected to PostgreSQL.');
     } else {

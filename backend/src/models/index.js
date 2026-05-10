@@ -18,6 +18,7 @@ const Announcement      = require('./announcement.model');
 const { Device, DeviceLog } = require('./device.model');
 const WorkShift         = require('./work_shift.model');
 const SurpriseAttendanceEvent = require('./surprise_attendance.model');
+const { AgentJob } = require('./agent_job.model');
 
 // Auth
 Company.hasMany(CompanyFeature, { foreignKey: 'company_id', as: 'features' });
@@ -115,4 +116,5 @@ module.exports = {
   Device, DeviceLog,
   WorkShift,
   SurpriseAttendanceEvent,
+  AgentJob,
 };

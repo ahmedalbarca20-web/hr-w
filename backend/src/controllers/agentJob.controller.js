@@ -213,7 +213,7 @@ const createDeviceAgentJob = asyncHandler(async (req, res) => {
     };
   }
 
-  const job = jobs.createJob({
+  const job = await jobs.createJob({
     agent_id: agentId,
     action,
     timeout_ms: timeoutMs,
@@ -351,7 +351,7 @@ const enqueueAgentJob = asyncHandler(async (req, res) => {
     }
   }
 
-  const job = jobs.createJob({
+  const job = await jobs.createJob({
     agent_id: req.agentId,
     action,
     timeout_ms: timeoutMs,
@@ -376,7 +376,7 @@ const pollJobs = asyncHandler(async (req, res) => {
   if (!requireAgentAuth(req, res)) return;
 
   const limit = Number.isFinite(Number(req.query.limit)) ? Number(req.query.limit) : 3;
-  const list = jobs.claimPendingJobs(req.agentId, { limit });
+  const list = await jobs.claimPendingJobs(req.agentId, { limit });
 
   const out = list
     .filter((j) => VALID_ACTIONS.has(j.action))
@@ -405,13 +405,13 @@ const submitResult = asyncHandler(async (req, res) => {
     return sendError(res, 'Invalid status', 422, 'VALIDATION_ERROR');
   }
 
-  const job = jobs.getJob(jobId);
+  const job = await jobs.getJob(jobId);
   if (!job) return sendError(res, 'Job not found', 404, 'NOT_FOUND');
   if (job.agent_id !== req.agentId) {
     return sendError(res, 'Job does not belong to this agent', 403, 'AGENT_FORBIDDEN');
   }
 
-  const updated = jobs.completeJob(jobId, {
+  const updated = await jobs.completeJob(jobId, {
     status: statusRaw || undefined,
     result: req.body?.result || null,
     error: req.body?.error || null,
@@ -456,7 +456,7 @@ const getStatus = asyncHandler(async (req, res) => {
   const id = String(req.params.id || '').trim();
   if (!id) return sendError(res, 'Job id is required', 422, 'VALIDATION_ERROR');
 
-  const job = jobs.getJob(id);
+  const job = await jobs.getJob(id);
   if (!job) return sendError(res, 'Job not found', 404, 'NOT_FOUND');
 
   sendSuccess(res, {
