@@ -148,6 +148,9 @@ export default function RawLogs() {
 
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-card px-5 py-4 flex flex-wrap items-center gap-3">
+        <div className="w-full rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 leading-relaxed">
+          السجلات هنا مما وصل إلى <strong>هذا النظام</strong> (دفع من الجهاز أو استيراد ZK). إن رأيت 0 بينما البرنامج الرسمي للجهاز يعرض بصمات: تحقق من ربط الجهاز بالسيرفر، ثم «مركز المزامنة» للاستيراد. للسوبر أدمن: اختر الشركة النشطة حتى يُرسل <code className="bg-white/80 px-1 rounded">company_id</code> مع الطلب.
+        </div>
         <div className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           تنبيه: أي بصمة خارج نافذة تسجيل الدخول/الخروج المحددة في الدوام قد يتم تجاهلها في احتساب الحضور.
         </div>

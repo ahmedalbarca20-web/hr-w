@@ -376,19 +376,35 @@ const listLogs = asyncHandler(async (req, res) => {
   if (!parsed.success) return sendError(res, parsed.error.errors[0]?.message, 422, 'VALIDATION_ERROR');
 
   const company_id = resolveCompanyId(req);
+  if (company_id == null || !Number.isFinite(Number(company_id)) || Number(company_id) < 1) {
+    return sendError(
+      res,
+      'company_id is required (select active company for super admin, or add ?company_id= to the request)',
+      422,
+      'VALIDATION_ERROR',
+    );
+  }
   const data       = await svc.listLogs(company_id, parsed.data);
   sendSuccess(res, data);
 });
 
 const getLog = asyncHandler(async (req, res) => {
   const id = parseId(req, res); if (id === null) return;
-  const data = await svc.getLog(id, resolveCompanyId(req));
+  const company_id = resolveCompanyId(req);
+  if (company_id == null || !Number.isFinite(Number(company_id)) || Number(company_id) < 1) {
+    return sendError(res, 'company_id is required (super admin: select company or pass ?company_id=)', 422, 'VALIDATION_ERROR');
+  }
+  const data = await svc.getLog(id, company_id);
   sendSuccess(res, data);
 });
 
 const reprocessLog = asyncHandler(async (req, res) => {
   const id = parseId(req, res); if (id === null) return;
-  const data = await svc.markForReprocess(id, resolveCompanyId(req));
+  const company_id = resolveCompanyId(req);
+  if (company_id == null || !Number.isFinite(Number(company_id)) || Number(company_id) < 1) {
+    return sendError(res, 'company_id is required (super admin: select company or pass ?company_id=)', 422, 'VALIDATION_ERROR');
+  }
+  const data = await svc.markForReprocess(id, company_id);
   sendSuccess(res, data, 'Log marked for reprocessing');
 });
 
@@ -418,6 +434,9 @@ const testDeviceIngest = asyncHandler(async (req, res) => {
 
 const reResolveLogs = asyncHandler(async (req, res) => {
   const company_id = resolveCompanyId(req);
+  if (company_id == null || !Number.isFinite(Number(company_id)) || Number(company_id) < 1) {
+    return sendError(res, 'company_id is required (super admin: select company or pass ?company_id=)', 422, 'VALIDATION_ERROR');
+  }
   const data       = await svc.reResolveUnresolvedLogs(company_id);
   sendSuccess(res, data, `تمت معالجة ${data.total} سجل، وتم ربط ${data.resolved} موظف جديد بنجاح.`);
 });

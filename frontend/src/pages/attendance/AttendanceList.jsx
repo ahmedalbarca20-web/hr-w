@@ -23,7 +23,8 @@ export default function AttendanceList() {
   const [page, setPage]       = useState(1);
   const [totalPages, setTP]   = useState(1);
   const [dateFilter, setDate] = useState('');
-  const [showLateRecords, setShowLateRecords] = useState(false);
+  /** Default true: hiding «late» rows made the table look empty while API still had data. */
+  const [showLateRecords, setShowLateRecords] = useState(true);
   const [showSurpriseModal, setShowSurpriseModal] = useState(false);
   const [durationMinutes, setDurationMinutes] = useState(15);
   const [surpriseSubmitting, setSurpriseSubmitting] = useState(false);
@@ -177,6 +178,7 @@ export default function AttendanceList() {
   );
   const hiddenLateCount = rows.filter(isLateOrDelayed).length;
   const visibleRows = showLateRecords ? rows : rows.filter((r) => !isLateOrDelayed(r));
+  const lateRowsHidden = !showLateRecords && rows.length > 0 && visibleRows.length === 0;
 
   const handleActivateSurprise = async () => {
     setSurpriseMsg('');
@@ -294,6 +296,21 @@ export default function AttendanceList() {
             />
           </div>
         </div>
+
+        <div className="mx-4 mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 leading-relaxed">
+          {t(
+            'attendance.pipeline_hint',
+            'هذه الصفحة تعرض سجلات الحضور اليومية بعد المعالجة في هذا النظام (جدول attendance). البصمات الموجودة في برنامج الشركة أو على ذاكرة الجهاز لا تظهر هنا إلا بعد: استيرادها إلى «سجلات الجهاز الخام» ثم تشغيل «معالجة الحضور». إن كان التاريخ مفعّلاً فوق، امسحه لعرض كل الأيام.',
+          )}
+        </div>
+        {lateRowsHidden && (
+          <div className="mx-4 mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            {t(
+              'attendance.late_hidden_banner',
+              'كل السجلات في هذه الصفحة «متأخرة» ومخفية حالياً. اضغط «إظهار المتأخرين» أعلاه لعرضها.',
+            )}
+          </div>
+        )}
 
         <Table
           columns={COLUMNS}
