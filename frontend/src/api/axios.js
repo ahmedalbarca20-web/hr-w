@@ -46,15 +46,20 @@ const api = axios.create({
   withCredentials: true,
 });
 
-function superAdminTenantCompanyId() {
+/**
+ * Tenant id sent on API calls for super-admin: active company from the UI
+ * (localStorage) overrides JWT company_id so inspection stays scoped to one company.
+ */
+function superAdminScopedCompanyId() {
   try {
     const u = JSON.parse(localStorage.getItem('user') || 'null');
     if (!u) return null;
-    const noCompany = u.company_id == null || u.company_id === '';
     const isSa = Boolean(u.is_super_admin) || u.role === 'SUPER_ADMIN';
-    if (!noCompany || !isSa) return null;
+    if (!isSa) return null;
     const fromLs = Number(localStorage.getItem(HR_ACTIVE_COMPANY_KEY));
     if (Number.isInteger(fromLs) && fromLs > 0) return fromLs;
+    const jwtCo = Number(u.company_id);
+    if (Number.isInteger(jwtCo) && jwtCo > 0) return jwtCo;
     return null;
   } catch {
     return null;
@@ -87,9 +92,7 @@ api.interceptors.request.use((config) => {
   }
 
   const { isSuperAdmin, companyId: userCompanyId } = currentUserTenantScope();
-  const cid = isSuperAdmin && !userCompanyId
-    ? superAdminTenantCompanyId()
-    : userCompanyId;
+  const cid = isSuperAdmin ? superAdminScopedCompanyId() : userCompanyId;
   if (cid == null) return config;
 
   if (!config.params) config.params = {};

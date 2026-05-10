@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   getSetupStatus,
   postSetupStart,
@@ -11,23 +12,19 @@ import {
   postSetupComplete,
 } from '../../api/setup.api';
 import { useAuth } from '../../context/AuthContext';
+import { useLang } from '../../context/LangContext';
 
-const WEEKDAYS = [
-  { v: 1, label: 'Mon' },
-  { v: 2, label: 'Tue' },
-  { v: 3, label: 'Wed' },
-  { v: 4, label: 'Thu' },
-  { v: 5, label: 'Fri' },
-  { v: 6, label: 'Sat' },
-  { v: 0, label: 'Sun' },
-];
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
-function friendlyErr(e) {
+function pickFriendlyError(e, t) {
   const m = e.response?.data?.error || e.message;
-  return typeof m === 'string' && m.trim() ? m : 'Something went wrong. Please try again.';
+  if (typeof m === 'string' && m.trim()) return m;
+  return t('setup.error_generic');
 }
 
 export default function OnboardingWizard() {
+  const { t, i18n } = useTranslation();
+  const { isRTL } = useLang();
   const navigate = useNavigate();
   const { refreshProfile } = useAuth();
 
@@ -52,6 +49,21 @@ export default function OnboardingWizard() {
 
   const maxNav = status?.current_step ?? 1;
 
+  const weekdayLabels = useMemo(
+    () => WEEKDAY_ORDER.map((v) => ({ v, label: t(`setup.weekday_${v}`) })),
+    [t, i18n.language],
+  );
+
+  const steps = useMemo(
+    () => [
+      { id: 1, title: t('setup.nav_1_title'), desc: t('setup.nav_1_desc') },
+      { id: 2, title: t('setup.nav_2_title'), desc: t('setup.nav_2_desc') },
+      { id: 3, title: t('setup.nav_3_title'), desc: t('setup.nav_3_desc') },
+      { id: 4, title: t('setup.nav_4_title'), desc: t('setup.nav_4_desc') },
+    ],
+    [t, i18n.language],
+  );
+
   const refresh = useCallback(async () => {
     const { data } = await getSetupStatus();
     const s = data?.data;
@@ -69,7 +81,7 @@ export default function OnboardingWizard() {
         const s = await refresh();
         if (!cancelled && s) setActiveStep(Math.min(4, Math.max(1, s.current_step ?? 1)));
       } catch (e) {
-        if (!cancelled) setLoadErr(friendlyErr(e));
+        if (!cancelled) setLoadErr(pickFriendlyError(e, t));
       }
     })();
     return () => { cancelled = true; };
@@ -103,9 +115,9 @@ export default function OnboardingWizard() {
       });
       const s = await refresh();
       setActiveStep(Math.min(4, Math.max(1, s?.current_step ?? 2)));
-      setBanner({ type: 'ok', text: 'Working hours saved.' });
+      setBanner({ type: 'ok', text: t('setup.banner_hours_saved') });
     } catch (e) {
-      setBanner({ type: 'err', text: friendlyErr(e) });
+      setBanner({ type: 'err', text: pickFriendlyError(e, t) });
     } finally {
       setBusy(false);
     }
@@ -121,10 +133,10 @@ export default function OnboardingWizard() {
       setTestOk(ok);
       setBanner({
         type: ok ? 'ok' : 'err',
-        text: data?.data?.message || (ok ? 'Connection succeeded.' : 'Could not reach the device.'),
+        text: ok ? t('setup.banner_test_ok') : t('setup.banner_test_fail'),
       });
     } catch (e) {
-      setBanner({ type: 'err', text: friendlyErr(e) });
+      setBanner({ type: 'err', text: pickFriendlyError(e, t) });
     } finally {
       setTesting(false);
     }
@@ -139,9 +151,9 @@ export default function OnboardingWizard() {
       if (d?.id) setDeviceId(d.id);
       const s = await refresh();
       setActiveStep(Math.min(4, Math.max(1, s?.current_step ?? 3)));
-      setBanner({ type: 'ok', text: 'Device saved.' });
+      setBanner({ type: 'ok', text: t('setup.banner_device_saved') });
     } catch (e) {
-      setBanner({ type: 'err', text: friendlyErr(e) });
+      setBanner({ type: 'err', text: pickFriendlyError(e, t) });
     } finally {
       setBusy(false);
     }
@@ -155,9 +167,14 @@ export default function OnboardingWizard() {
       const users = data?.data?.users || [];
       setRoster(users);
       setSelected(new Set(users.map((u) => Number(u.uid)).filter((n) => Number.isInteger(n))));
-      setBanner({ type: 'ok', text: users.length ? `Found ${users.length} people on the device.` : 'No people were returned from the device.' });
+      setBanner({
+        type: 'ok',
+        text: users.length
+          ? t('setup.banner_fetch_count', { count: users.length })
+          : t('setup.banner_fetch_empty'),
+      });
     } catch (e) {
-      setBanner({ type: 'err', text: friendlyErr(e) });
+      setBanner({ type: 'err', text: pickFriendlyError(e, t) });
     } finally {
       setBusy(false);
     }
@@ -169,7 +186,7 @@ export default function OnboardingWizard() {
     try {
       const uids = all ? roster.map((u) => Number(u.uid)).filter((n) => Number.isInteger(n)) : [...selected];
       if (!all && uids.length === 0) {
-        setBanner({ type: 'err', text: 'Select at least one person, or use Import All.' });
+        setBanner({ type: 'err', text: t('setup.pick_one_or_all') });
         setBusy(false);
         return;
       }
@@ -177,9 +194,10 @@ export default function OnboardingWizard() {
       setStatus(data?.data);
       const s = await refresh();
       setActiveStep(Math.min(4, Math.max(1, s?.current_step ?? 4)));
-      setBanner({ type: 'ok', text: `Imported ${data?.data?.imported ?? uids.length} people.` });
+      const n = data?.data?.imported ?? uids.length;
+      setBanner({ type: 'ok', text: t('setup.banner_import_count', { count: n }) });
     } catch (e) {
-      setBanner({ type: 'err', text: friendlyErr(e) });
+      setBanner({ type: 'err', text: pickFriendlyError(e, t) });
     } finally {
       setBusy(false);
     }
@@ -192,9 +210,9 @@ export default function OnboardingWizard() {
       await postSetupImportRun({ skip: true });
       const s = await refresh();
       setActiveStep(Math.min(4, Math.max(1, s?.current_step ?? 4)));
-      setBanner({ type: 'ok', text: 'You can add employees anytime from the menu.' });
+      setBanner({ type: 'ok', text: t('setup.banner_skip_hint') });
     } catch (e) {
-      setBanner({ type: 'err', text: friendlyErr(e) });
+      setBanner({ type: 'err', text: pickFriendlyError(e, t) });
     } finally {
       setBusy(false);
     }
@@ -208,7 +226,7 @@ export default function OnboardingWizard() {
       await refreshProfile();
       navigate('/', { replace: true });
     } catch (e) {
-      setBanner({ type: 'err', text: friendlyErr(e) });
+      setBanner({ type: 'err', text: pickFriendlyError(e, t) });
     } finally {
       setBusy(false);
     }
@@ -216,10 +234,12 @@ export default function OnboardingWizard() {
 
   if (loadErr) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="max-w-md rounded-xl bg-white shadow-card p-6 text-center text-gray-700">
           <p className="mb-4">{loadErr}</p>
-          <button type="button" className="btn-primary" onClick={() => window.location.reload()}>Retry</button>
+          <button type="button" className="btn-primary" onClick={() => window.location.reload()}>
+            {t('setup.retry')}
+          </button>
         </div>
       </div>
     );
@@ -227,24 +247,17 @@ export default function OnboardingWizard() {
 
   if (!status) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-600">Loading…</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50" dir={isRTL ? 'rtl' : 'ltr'}>
+        <p className="text-gray-600">{t('setup.loading')}</p>
       </div>
     );
   }
 
-  const steps = [
-    { id: 1, title: 'Working Hours', desc: 'Schedule' },
-    { id: 2, title: 'Devices', desc: 'Connect' },
-    { id: 3, title: 'Employees', desc: 'Import' },
-    { id: 4, title: 'Finish', desc: 'Done' },
-  ];
-
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
+    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row" dir={isRTL ? 'rtl' : 'ltr'}>
       <aside className="w-full md:w-64 shrink-0 border-b md:border-b-0 md:border-r border-gray-200 bg-white p-6">
-        <h1 className="text-lg font-bold text-gray-900 mb-1">Welcome</h1>
-        <p className="text-xs text-gray-500 mb-6">Set up your company in a few steps.</p>
+        <h1 className="text-lg font-bold text-gray-900 mb-1">{t('setup.welcome_title')}</h1>
+        <p className="text-xs text-gray-500 mb-6">{t('setup.welcome_subtitle')}</p>
         <nav className="space-y-1">
           {steps.map((s) => {
             const locked = s.id > maxNav;
@@ -255,7 +268,7 @@ export default function OnboardingWizard() {
                 type="button"
                 disabled={locked}
                 onClick={() => goStep(s.id)}
-                className={`w-full text-left rounded-lg px-3 py-2.5 text-sm transition ${
+                className={`w-full text-start rounded-lg px-3 py-2.5 text-sm transition ${
                   active ? 'bg-brand/10 text-brand font-semibold ring-1 ring-brand/20' : 'text-gray-700 hover:bg-gray-50'
                 } ${locked ? 'opacity-40 cursor-not-allowed hover:bg-transparent' : ''}`}
               >
@@ -270,7 +283,7 @@ export default function OnboardingWizard() {
       <main className="flex-1 p-6 md:p-10 max-w-2xl mx-auto w-full">
         <div className="mb-6">
           <div className="flex justify-between text-xs text-gray-500 mb-1">
-            <span>Step {activeStep} of 4</span>
+            <span>{t('setup.step_of', { current: activeStep, total: 4 })}</span>
             <span>{Math.round(progressPct)}%</span>
           </div>
           <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
@@ -286,22 +299,22 @@ export default function OnboardingWizard() {
 
         {activeStep === 1 && (
           <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Set Company Working Hours</h2>
-            <p className="text-sm text-gray-600">Define the official working schedule for attendance calculations.</p>
+            <h2 className="text-xl font-semibold text-gray-900">{t('setup.hours_title')}</h2>
+            <p className="text-sm text-gray-600">{t('setup.hours_hint')}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="label">Work start time</label>
+                <label className="label">{t('setup.work_start')}</label>
                 <input type="time" className="input" value={workStart} onChange={(e) => setWorkStart(e.target.value)} />
               </div>
               <div>
-                <label className="label">Work end time</label>
+                <label className="label">{t('setup.work_end')}</label>
                 <input type="time" className="input" value={workEnd} onChange={(e) => setWorkEnd(e.target.value)} />
               </div>
             </div>
             <div>
-              <label className="label">Working days (optional)</label>
+              <label className="label">{t('setup.work_days')}</label>
               <div className="flex flex-wrap gap-2 mt-2">
-                {WEEKDAYS.map((d) => (
+                {weekdayLabels.map((d) => (
                   <label key={d.v} className="inline-flex items-center gap-1.5 text-sm text-gray-700">
                     <input
                       type="checkbox"
@@ -315,7 +328,7 @@ export default function OnboardingWizard() {
             </div>
             <div className="flex justify-end pt-4">
               <button type="button" className="btn-primary" disabled={busy || workDays.length === 0} onClick={submitHours}>
-                {busy ? 'Saving…' : 'Next — Add Devices'}
+                {busy ? t('setup.saving') : t('setup.next_devices')}
               </button>
             </div>
           </div>
@@ -323,24 +336,34 @@ export default function OnboardingWizard() {
 
         {activeStep === 2 && (
           <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Connect Attendance Devices</h2>
-            <p className="text-sm text-gray-600">Add fingerprint devices used in your company.</p>
+            <h2 className="text-xl font-semibold text-gray-900">{t('setup.device_title')}</h2>
+            <p className="text-sm text-gray-600">{t('setup.device_hint')}</p>
             <div>
-              <label className="label">Device name</label>
-              <input className="input" value={deviceName} onChange={(e) => setDeviceName(e.target.value)} placeholder="e.g. Main entrance" />
+              <label className="label">{t('setup.device_name')}</label>
+              <input
+                className="input"
+                value={deviceName}
+                onChange={(e) => setDeviceName(e.target.value)}
+                placeholder={t('setup.ph_device_name')}
+              />
             </div>
             <div>
-              <label className="label">Device IP address</label>
-              <input className="input font-mono" value={deviceIp} onChange={(e) => setDeviceIp(e.target.value)} placeholder="192.168.1.201" />
+              <label className="label">{t('setup.device_ip')}</label>
+              <input
+                className="input font-mono"
+                value={deviceIp}
+                onChange={(e) => setDeviceIp(e.target.value)}
+                placeholder={t('setup.ph_device_ip')}
+              />
             </div>
             <div className="flex flex-wrap gap-3">
               <button type="button" className="btn-ghost" disabled={testing || !deviceIp.trim()} onClick={runTest}>
-                {testing ? 'Testing…' : 'Test connection'}
+                {testing ? t('setup.testing') : t('setup.test_connection')}
               </button>
             </div>
             {!testOk && deviceIp.trim() && (
               <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
-                Run a connection test before continuing. If your network blocks the check, you can still try saving — the device may work once it is on the same network as this app.
+                {t('setup.device_test_hint')}
               </p>
             )}
             <div className="flex justify-end pt-4">
@@ -350,7 +373,7 @@ export default function OnboardingWizard() {
                 disabled={busy || !deviceName.trim() || !deviceIp.trim()}
                 onClick={submitDevice}
               >
-                {busy ? 'Saving…' : 'Next — Sync Employees'}
+                {busy ? t('setup.saving') : t('setup.next_employees')}
               </button>
             </div>
           </div>
@@ -358,11 +381,11 @@ export default function OnboardingWizard() {
 
         {activeStep === 3 && (
           <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Import Employees</h2>
-            <p className="text-sm text-gray-600">Import employee data directly from the attendance device.</p>
+            <h2 className="text-xl font-semibold text-gray-900">{t('setup.import_title')}</h2>
+            <p className="text-sm text-gray-600">{t('setup.import_hint')}</p>
             <div className="flex flex-wrap gap-3">
               <button type="button" className="btn-ghost" disabled={busy} onClick={fetchRoster}>
-                {busy ? 'Please wait…' : 'Fetch Employees from Device'}
+                {busy ? t('setup.wait') : t('setup.fetch_employees')}
               </button>
             </div>
             {roster.length > 0 && (
@@ -370,10 +393,10 @@ export default function OnboardingWizard() {
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50 text-gray-600">
                     <tr>
-                      <th className="px-3 py-2 text-left w-10">
+                      <th className="px-3 py-2 text-start w-10">
                         <input
                           type="checkbox"
-                          aria-label="Select all"
+                          aria-label={t('setup.select_all_aria')}
                           checked={selected.size === roster.length && roster.length > 0}
                           onChange={(e) => {
                             if (e.target.checked) {
@@ -384,8 +407,8 @@ export default function OnboardingWizard() {
                           }}
                         />
                       </th>
-                      <th className="px-3 py-2 text-left">Name</th>
-                      <th className="px-3 py-2 text-left">ID</th>
+                      <th className="px-3 py-2 text-start">{t('setup.th_name')}</th>
+                      <th className="px-3 py-2 text-start">{t('setup.th_id')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -408,7 +431,7 @@ export default function OnboardingWizard() {
                               }}
                             />
                           </td>
-                          <td className="px-3 py-2">{u.name || '—'}</td>
+                          <td className="px-3 py-2">{u.name || t('setup.empty_name')}</td>
                           <td className="px-3 py-2 font-mono text-gray-600">{id}</td>
                         </tr>
                       );
@@ -419,13 +442,13 @@ export default function OnboardingWizard() {
             )}
             <div className="flex flex-wrap gap-3">
               <button type="button" className="btn-primary" disabled={busy || roster.length === 0} onClick={() => importSelected(true)}>
-                Import All
+                {t('setup.import_all')}
               </button>
               <button type="button" className="btn-ghost" disabled={busy || roster.length === 0} onClick={() => importSelected(false)}>
-                Import selected
+                {t('setup.import_selected')}
               </button>
               <button type="button" className="btn-ghost text-gray-600" disabled={busy} onClick={skipImport}>
-                I’ll add people later
+                {t('setup.skip_later')}
               </button>
             </div>
             <div className="flex justify-end pt-4">
@@ -435,7 +458,7 @@ export default function OnboardingWizard() {
                 disabled={busy || Number(status?.last_completed_step ?? 0) < 3}
                 onClick={() => goStep(4)}
               >
-                Next — Finish Setup
+                {t('setup.next_finish')}
               </button>
             </div>
           </div>
@@ -443,25 +466,25 @@ export default function OnboardingWizard() {
 
         {activeStep === 4 && (
           <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Setup Completed Successfully</h2>
-            <p className="text-sm text-gray-600">Here is a quick summary. You can change any of these later from settings.</p>
+            <h2 className="text-xl font-semibold text-gray-900">{t('setup.finish_title')}</h2>
+            <p className="text-sm text-gray-600">{t('setup.finish_hint')}</p>
             <ul className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-100 text-sm">
-              <li className="px-4 py-3 flex justify-between">
-                <span className="text-gray-600">Devices added</span>
-                <span className="font-semibold text-gray-900">{status.device_count ?? 0}</span>
+              <li className="px-4 py-3 flex justify-between gap-4">
+                <span className="text-gray-600">{t('setup.summary_devices')}</span>
+                <span className="font-semibold text-gray-900 shrink-0">{status.device_count ?? 0}</span>
               </li>
-              <li className="px-4 py-3 flex justify-between">
-                <span className="text-gray-600">Employees in the system</span>
-                <span className="font-semibold text-gray-900">{status.employee_count ?? 0}</span>
+              <li className="px-4 py-3 flex justify-between gap-4">
+                <span className="text-gray-600">{t('setup.summary_employees')}</span>
+                <span className="font-semibold text-gray-900 shrink-0">{status.employee_count ?? 0}</span>
               </li>
-              <li className="px-4 py-3 flex justify-between">
-                <span className="text-gray-600">Status</span>
-                <span className="font-semibold text-emerald-700">Connected · Active</span>
+              <li className="px-4 py-3 flex justify-between gap-4">
+                <span className="text-gray-600">{t('setup.summary_status')}</span>
+                <span className="font-semibold text-emerald-700 shrink-0 text-end">{t('setup.summary_status_value')}</span>
               </li>
             </ul>
             <div className="flex justify-end pt-4">
               <button type="button" className="btn-primary" disabled={busy} onClick={finish}>
-                {busy ? 'Opening…' : 'Go to Dashboard'}
+                {busy ? t('setup.opening') : t('setup.go_dashboard')}
               </button>
             </div>
           </div>

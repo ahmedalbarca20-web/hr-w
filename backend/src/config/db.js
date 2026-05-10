@@ -364,6 +364,34 @@ const connectDB = async () => {
       });
     }
   };
+  /** companies: guided onboarding columns (older DBs without manual patch). */
+  const ensureCompanyOnboardingColumns = async () => {
+    let cols;
+    try {
+      cols = await qi.describeTable('companies');
+    } catch {
+      return;
+    }
+    let added = false;
+    if (!cols.onboarding_completed_at) {
+      await qi.addColumn('companies', 'onboarding_completed_at', { type: DataTypes.DATE, allowNull: true });
+      added = true;
+    }
+    if (!cols.onboarding_last_step) {
+      await qi.addColumn('companies', 'onboarding_last_step', {
+        type: DataTypes.TINYINT,
+        allowNull: false,
+        defaultValue: 0,
+      });
+      added = true;
+    }
+    if (added) {
+      await sequelize.query(
+        'UPDATE companies SET onboarding_completed_at = CURRENT_TIMESTAMP WHERE onboarding_completed_at IS NULL',
+      );
+    }
+  };
+
   const ensureWorkShiftColumns = async () => {
     let cols;
     try {
@@ -394,6 +422,7 @@ const connectDB = async () => {
   if (dialect === 'sqlite') {
     // Load all models so Sequelize knows the table definitions
     require('../models/index');
+    await ensureCompanyOnboardingColumns();
     await ensureDevicesDepartmentAndHost();
     // Legacy columns must exist BEFORE sync — otherwise sync tries to create indexes on missing columns.
     await ensureWorkShiftColumns();
@@ -409,6 +438,7 @@ const connectDB = async () => {
     console.log('[DB] SQLite database synced and ready.');
   } else {
     require('../models/index');
+    await ensureCompanyOnboardingColumns();
     await ensureDevicesDepartmentAndHost();
     await ensureWorkShiftColumns();
     await ensureSurpriseAttendanceTable();

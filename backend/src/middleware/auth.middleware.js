@@ -94,9 +94,8 @@ const authenticate = async (req, res, next) => {
       req.user.company_id = tokenCompanyId;
       req.tenant_company_id = tokenCompanyId;
     } else {
-      if (tokenCompanyId && requestedCompanyId && requestedCompanyId !== tokenCompanyId) {
-        return sendError(res, 'Cross-company access is forbidden', 403, ERROR_CODES.FORBIDDEN);
-      }
+      // Super-admin: explicit ?company_id= / body wins over JWT company_id
+      // so one account can inspect any tenant without token rotation.
       if (!tokenCompanyId && !requestedCompanyId && !isTenantAgnosticPath(req)) {
         return sendError(
           res,
@@ -105,7 +104,7 @@ const authenticate = async (req, res, next) => {
           ERROR_CODES.VALIDATION_ERROR
         );
       }
-      const effectiveCompanyId = tokenCompanyId || requestedCompanyId || null;
+      const effectiveCompanyId = requestedCompanyId || tokenCompanyId || null;
       req.user.company_id = effectiveCompanyId;
       req.tenant_company_id = effectiveCompanyId;
     }

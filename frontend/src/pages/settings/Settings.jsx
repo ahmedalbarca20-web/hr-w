@@ -1,15 +1,22 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLang } from '../../context/LangContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency, CURRENCIES } from '../../context/CurrencyContext';
 import { getCompanySettings, updateCompanySettings } from '../../api/settings.api';
+import { listCompanies } from '../../api/company.api';
 import Button from '../../components/common/Button';
 import Alert from '../../components/common/Alert';
 import {
   DEFAULT_COMPANY_TIMEZONE,
   COMPANY_TIMEZONE_OPTIONS,
 } from '../../lib/regionDefaults';
+import {
+  HR_ACTIVE_COMPANY_KEY,
+  HR_ACTIVE_TENANT_EVENT,
+  getActiveTenantCompanyId,
+  isSuperAdminUser,
+} from '../../utils/tenantScope';
 
 export default function Settings() {
   const { t }               = useTranslation();
@@ -21,12 +28,25 @@ export default function Settings() {
   const [localCurrency, setLocalCurrency] = useState(currency.code);
   const [localTimezone, setLocalTimezone] = useState(DEFAULT_COMPANY_TIMEZONE);
   const [companyCode, setCompanyCode] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [tenantPick, setTenantPick] = useState(() => getActiveTenantCompanyId(user));
+  const [companyRows, setCompanyRows] = useState([]);
+  const isSa = isSuperAdminUser(user);
 
-  useEffect(() => {
+  const loadCompanyForm = useCallback(() => {
+    const tid = getActiveTenantCompanyId(user);
+    setTenantPick(tid);
+    if (isSa && !tid) {
+      setCompanyCode('');
+      setCompanyName('');
+      setLocalTimezone(DEFAULT_COMPANY_TIMEZONE);
+      return;
+    }
     getCompanySettings()
       .then(({ data }) => {
         const d = data?.data;
         setCompanyCode(d?.company_code || '');
+        setCompanyName(d?.name || '');
         const tz = d?.timezone && String(d.timezone).trim();
         setLocalTimezone(tz || DEFAULT_COMPANY_TIMEZONE);
         const cur = d?.currency;
@@ -34,11 +54,39 @@ export default function Settings() {
       })
       .catch(() => {
         setCompanyCode('');
+        setCompanyName('');
         setLocalTimezone(DEFAULT_COMPANY_TIMEZONE);
       });
-  }, []);
+  }, [user, isSa]);
+
+  useEffect(() => {
+    loadCompanyForm();
+  }, [loadCompanyForm]);
+
+  useEffect(() => {
+    if (!isSa) return undefined;
+    const onTenant = () => { loadCompanyForm(); };
+    window.addEventListener(HR_ACTIVE_TENANT_EVENT, onTenant);
+    return () => window.removeEventListener(HR_ACTIVE_TENANT_EVENT, onTenant);
+  }, [isSa, loadCompanyForm]);
+
+  useEffect(() => {
+    if (!isSa) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await listCompanies({ limit: 500 });
+        const rows = Array.isArray(data?.data) ? data.data : [];
+        if (!cancelled) setCompanyRows(rows);
+      } catch {
+        if (!cancelled) setCompanyRows([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isSa]);
 
   const handleSave = async () => {
+    if (isSa && !getActiveTenantCompanyId(user)) return;
     setSaving(true);
     try {
       await updateCompanySettings({ currency: localCurrency, timezone: localTimezone });
@@ -47,6 +95,13 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const onPickTenant = (e) => {
+    const v = Number(e.target.value);
+    if (!Number.isInteger(v) || v < 1) return;
+    localStorage.setItem(HR_ACTIVE_COMPANY_KEY, String(v));
+    window.dispatchEvent(new Event(HR_ACTIVE_TENANT_EVENT));
   };
 
   const CURRENCY_OPTIONS = [
@@ -66,6 +121,33 @@ export default function Settings() {
     <div className="space-y-6 max-w-2xl mx-auto w-full">
       {saved && (
         <Alert type="success" message={t('settings.saved')} onClose={() => setSaved(false)} />
+      )}
+
+      {isSa && (
+        <div className="md-card p-4 border border-amber-200 bg-amber-50/80">
+          <h3 className="text-sm font-semibold text-amber-950 mb-2">
+            {t('settings.super_admin_tenant')}
+          </h3>
+          <p className="text-xs text-amber-900/90 mb-3 leading-relaxed">
+            {t('settings.super_admin_tenant_hint')}
+          </p>
+          <label className="label text-xs text-gray-700">{t('settings.company_pick')}</label>
+          <select
+            className="input max-w-md mt-1"
+            value={tenantPick && companyRows.some((c) => c.id === tenantPick) ? String(tenantPick) : ''}
+            onChange={onPickTenant}
+          >
+            <option value="">{t('settings.company_pick_placeholder')}</option>
+            {companyRows.map((c) => (
+              <option key={c.id} value={String(c.id)}>
+                {(c.name_ar || c.name || '').trim() || `Company #${c.id}`}
+              </option>
+            ))}
+          </select>
+          {!tenantPick && (
+            <p className="text-xs text-red-700 mt-2">{t('settings.pick_company_to_continue')}</p>
+          )}
+        </div>
       )}
 
       {/* Language card */}
@@ -103,7 +185,7 @@ export default function Settings() {
           {/* Currency selector */}
           <div className="border-t border-gray-100 pt-5">
             <label className="label text-sm font-semibold text-gray-700 mb-3 block">
-              {t('settings.currency', 'العملة / Currency')}
+              {t('settings.currency')}
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {CURRENCY_OPTIONS.map((opt) => (
@@ -135,7 +217,7 @@ export default function Settings() {
           {/* Company time zone (Iraq default) */}
           <div className="border-t border-gray-100 pt-5">
             <label className="label text-sm font-semibold text-gray-700 mb-2 block">
-              {t('settings.timezone', 'المنطقة الزمنية للشركة')}
+              {t('settings.timezone')}
             </label>
             <select
               className="input max-w-md"
@@ -148,7 +230,7 @@ export default function Settings() {
               ))}
             </select>
             <p className="text-xs text-gray-500 mt-1.5">
-              {t('settings.timezone_hint', 'يُستخدم لحساب «يوم العمل» والتقارير وفق توقيت العراق افتراضياً.')}
+              {t('settings.timezone_hint')}
             </p>
           </div>
 
@@ -158,6 +240,12 @@ export default function Settings() {
               {t('settings.profile')}
             </label>
             <div className="grid grid-cols-2 gap-4">
+              {companyName && (
+                <div className="col-span-2">
+                  <label className="label">{t('settings.company_name')}</label>
+                  <input readOnly value={companyName} className="input bg-gray-50 cursor-not-allowed" />
+                </div>
+              )}
               <div className="col-span-2">
                 <label className="label">{t('auth.company_code', 'رمز الشركة')}</label>
                 <input
@@ -188,7 +276,7 @@ export default function Settings() {
           </div>
 
           <div className="flex justify-end pt-2">
-            <Button loading={saving} onClick={handleSave}>
+            <Button loading={saving} onClick={handleSave} disabled={isSa && !tenantPick}>
               {t('settings.save')}
             </Button>
           </div>
