@@ -29,12 +29,25 @@ const {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Resolve company_id: super-admin can scope to any company via ?company_id=N,
+ * Resolve company_id: super-admin can scope via ?company_id=N or JSON body company_id;
  * everyone else is isolated to their own company.
  */
 function resolveCompanyId(req) {
-  if (!req.user.company_id && req.query.company_id) return Number(req.query.company_id);
-  return req.user.company_id;
+  const tokenCid = req.user?.company_id;
+  if (tokenCid != null && tokenCid !== '' && Number.isFinite(Number(tokenCid)) && Number(tokenCid) >= 1) {
+    return Number(tokenCid);
+  }
+  const qRaw = req.query?.company_id ?? req.query?.companyId;
+  if (qRaw != null && String(qRaw).trim() !== '') {
+    const n = Number(Array.isArray(qRaw) ? qRaw[0] : qRaw);
+    if (Number.isFinite(n) && n >= 1) return n;
+  }
+  const bRaw = req.body?.company_id ?? req.body?.companyId;
+  if (bRaw != null && String(bRaw).trim() !== '') {
+    const n = Number(bRaw);
+    if (Number.isFinite(n) && n >= 1) return n;
+  }
+  return null;
 }
 
 /** إظهار PIN جهاز ZK في الاستجابة: السوبر أدمن دائماً؛ غيره فقط إن فُعّلت ميزة الشركة `zk_device_pin`. */

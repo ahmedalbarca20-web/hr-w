@@ -514,7 +514,8 @@ const deviceZkDeviceUsersQuerySchema = z.object({
 });
 
 const deviceZkImportUsersSchema = z.object({
-  uids              : z.array(z.coerce.number().int().min(0)).min(1, 'Select at least one device user').max(200),
+  /** Must match practical «select all» on large ZK devices (list endpoint may cap users separately). */
+  uids              : z.array(z.coerce.number().int().min(0)).min(1, 'Select at least one device user').max(2000),
   port              : z.coerce.number().int().min(1).max(65535).optional(),
   comm_key: z.preprocess(
     (v) => {
