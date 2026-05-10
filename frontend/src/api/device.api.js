@@ -106,8 +106,125 @@ export const createDevice = (data) => api.post('/devices', data);
 export const probeDeviceConnection = (data) => api.post('/devices/probe-connection', data);
 /** Scan IPv4 range and return reachable ZK devices. */
 export const scanZkRange = (data) => api.post('/devices/scan-zk-range', data || {});
-/** Local-network relay probe via backend + local agent. Preferred for private LAN device checks. */
-export const probeDeviceViaAgent = (data) => api.post('/probe-device', data);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Poll GET /job-status/:id until terminal state or timeout.
+ * @returns {{ ok: boolean, row?: object, timedOut?: boolean }}
+ */
+async function pollAgentJob(jobId, { maxWaitMs = 45000, intervalMs = 800 } = {}) {
+	const deadline = Date.now() + maxWaitMs;
+	let row;
+	while (Date.now() < deadline) {
+		const { data: wrap } = await api.get(`/job-status/${jobId}`);
+		row = wrap?.data;
+		const status = row?.status;
+		if (status === 'success') return { ok: true, row };
+		if (status === 'failed' || status === 'timeout') return { ok: false, row };
+		await sleep(intervalMs);
+	}
+	return { ok: false, row, timedOut: true };
+}
+
+/**
+ * LAN HTTP probe: on public API hosts (e.g. Vercel) uses agent job queue (outbound polling) when
+ * VITE_AGENT_ID is set — no inbound tunnel to the agent. Locally, POST /probe-device (sync) when relay is off.
+ */
+export async function probeDeviceViaAgent(data = {}) {
+	if (!shouldRelayLocalAgentToApi()) {
+		return api.post('/probe-device', data);
+	}
+
+	const agentId = String(data.agent_id || import.meta.env.VITE_AGENT_ID || '').trim();
+	if (!agentId) {
+		return {
+			data: {
+				success: false,
+				message: 'VITE_AGENT_ID',
+				data: {
+					ok: false,
+					error:
+						'على الاستضافة السحابية: عيّن VITE_AGENT_ID في بيئة الواجهة (مثل office_1) ليطابق AGENT_ID على حاسبة الوكيل، أو اضبط LOCAL_AGENT_URL على الـ API لنفق يصل للوكيل.',
+					errors: [{ message: 'Set VITE_AGENT_ID (same as agent .env AGENT_ID) or use LOCAL_AGENT_URL on the API.' }],
+				},
+			},
+		};
+	}
+
+	try {
+		const { data: wrap } = await api.post('/device-agent/jobs', {
+			agent_id: agentId,
+			action: 'probe',
+			device_ip: data.device_ip || data.ip_address,
+			port: Number.isFinite(Number(data.port)) && Number(data.port) > 0 ? Number(data.port) : 80,
+			timeout_ms: data.timeout_ms ?? 1200,
+		});
+		const jobId = wrap?.data?.job_id;
+		if (!jobId) {
+			return {
+				data: {
+					success: false,
+					data: {
+						ok: false,
+						error: wrap?.message || 'لم يُرجع الخادم رقم مهمة',
+						errors: [{ message: 'No job_id from server' }],
+					},
+				},
+			};
+		}
+		const polled = await pollAgentJob(jobId);
+		if (polled.timedOut) {
+			return {
+				data: {
+					success: false,
+					data: {
+						ok: false,
+						error: 'انتهت مهلة انتظار الوكيل. تأكد أن polling-agent يعمل على الشبكة الداخلية وأن AGENT_SHARED_TOKEN و ALLOWED_AGENT_IDS مضبوطة على الخادم.',
+						errors: [{ message: 'Agent job poll timeout' }],
+					},
+				},
+			};
+		}
+		if (!polled.ok) {
+			const errObj = polled.row?.error;
+			const msg = typeof errObj === 'string' ? errObj : (errObj?.message || polled.row?.result?.message || 'فشلت مهمة الفحص');
+			return {
+				data: {
+					success: false,
+					data: {
+						ok: false,
+						error: msg,
+						errors: [{ message: msg }],
+						...(polled.row?.result && typeof polled.row.result === 'object' ? polled.row.result : {}),
+					},
+				},
+			};
+		}
+		const probe = polled.row?.result;
+		const payload = probe && typeof probe === 'object' ? probe : { ok: false, error: 'Empty agent result' };
+		return {
+			data: {
+				success: true,
+				message: 'Probe completed via LAN agent queue',
+				data: payload,
+			},
+		};
+	} catch (e) {
+		const status = e.response?.status ?? 0;
+		const payload = e.response?.data;
+		const msg = friendlyLocalAgentRelayError(status, payload) || e.message || 'probe queue failed';
+		return {
+			data: {
+				success: false,
+				data: {
+					ok: false,
+					error: msg,
+					errors: [{ message: msg }],
+				},
+			},
+		};
+	}
+}
 /** Try calling the local agent directly from the browser (localhost). Returns { status, data } or throws. */
 export const probeLocalAgent = (data) => callLocalAgent('probe', data);
 /** ZK binary protocol (zkteco-js) — TCP/UDP; optional fields: socket_timeout_ms, udp_local_port, include_users, max_users */
