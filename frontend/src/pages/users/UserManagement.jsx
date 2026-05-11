@@ -43,6 +43,7 @@ function EmployeeSelect({ register, name, employees, label, hint }) {
         {employees.map((e) => (
           <option key={e.id} value={e.id}>
             {e.employee_number} — {e.first_name} {e.last_name}
+            {e.status && e.status !== 'ACTIVE' ? ` (${e.status})` : ''}
           </option>
         ))}
       </select>
@@ -332,7 +333,7 @@ export default function UserManagement() {
       setEmployees([]);
       return;
     }
-    listEmployees({ page: 1, limit: 500, company_id: companyId, status: 'ACTIVE' })
+    listEmployees({ page: 1, limit: 500, company_id: companyId })
       .then(({ data }) => setEmployees(data.data?.data || []))
       .catch(() => setEmployees([]));
   }, [canPickEmployee, companyId, modal, editRow]);
@@ -422,7 +423,7 @@ export default function UserManagement() {
   const handleBulkDeactivate = async () => {
     if (!companyId) return;
     const targets = rows.filter(
-      (r) => rowSelection[r.id] && r.is_active && Number(r.id) !== Number(user?.id),
+      (r) => rowSelection[r.id] && Number(r.is_active) === 1 && Number(r.id) !== Number(user?.id),
     );
     if (!targets.length) {
       setAlert({ type: 'warning', message: t('users.bulk_none_active') });
@@ -510,9 +511,15 @@ export default function UserManagement() {
       render: (row) => {
         const e = row.employee || row.Employee;
         if (!e) return <span className="text-gray-400 text-sm">—</span>;
+        const deleted = Boolean(e.deleted_at);
         return (
-          <span className="text-sm">
+          <span className={`text-sm ${deleted ? 'text-gray-400 line-through' : ''}`}>
             {e.employee_number} · {e.first_name} {e.last_name}
+            {deleted ? (
+              <span className="ms-1 inline-block rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-600 not-italic no-underline">
+                {t('users.employee_soft_deleted', 'موظف محذوف')}
+              </span>
+            ) : null}
           </span>
         );
       },
@@ -521,8 +528,8 @@ export default function UserManagement() {
       key: 'is_active', label: t('employee.status'),
       render: (row) => (
         <Badge
-          status={row.is_active ? 'ACTIVE' : 'INACTIVE'}
-          label={row.is_active ? t('employee.active') : t('employee.inactive')}
+          status={Number(row.is_active) === 1 ? 'ACTIVE' : 'INACTIVE'}
+          label={Number(row.is_active) === 1 ? t('employee.active') : t('employee.inactive')}
         />
       ),
     },
@@ -647,7 +654,7 @@ export default function UserManagement() {
                 <span className="material-icons-round text-base text-purple-700">edit</span>
                 {t('common.edit')}
               </button>
-              {actionsMenu.row.is_active && Number(actionsMenu.row.id) !== Number(user?.id) ? (
+              {actionsMenu.row.is_active != null && Number(actionsMenu.row.is_active) === 1 && Number(actionsMenu.row.id) !== Number(user?.id) ? (
                 <button
                   type="button"
                   className={menuBtnClass}

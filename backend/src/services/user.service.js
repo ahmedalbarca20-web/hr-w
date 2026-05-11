@@ -44,8 +44,13 @@ async function list(company_id, { page = 1, limit = 20, is_active, search } = {}
     where,
     attributes: { exclude: ['password_hash','refresh_token'] },
     include: [
-      { model: Role,     as: 'role',     attributes: ['id','name','name_ar'] },
-      { model: Employee, as: 'employee', attributes: ['id','first_name','last_name','employee_number'], required: false },
+      { model: Role, as: 'role', attributes: ['id','name','name_ar'] },
+      {
+        model     : Employee.unscoped(),
+        as        : 'employee',
+        attributes: ['id', 'first_name', 'last_name', 'employee_number', 'deleted_at', 'status'],
+        required  : false,
+      },
     ],
     order: [['created_at', 'DESC']],
     ...paginate(page, limit),
@@ -68,8 +73,13 @@ async function getById(id, company_id) {
     where: { id, company_id },
     attributes: { exclude: ['password_hash','refresh_token'] },
     include: [
-      { model: Role,     as: 'role' },
-      { model: Employee, as: 'employee', required: false },
+      { model: Role, as: 'role' },
+      {
+        model     : Employee.unscoped(),
+        as        : 'employee',
+        required  : false,
+        attributes: ['id', 'first_name', 'last_name', 'employee_number', 'deleted_at', 'status', 'company_id'],
+      },
     ],
   });
   if (!user) throw notFound(id);
