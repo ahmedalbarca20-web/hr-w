@@ -45,12 +45,33 @@ const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
   .map((o) => o.trim())
   .filter(Boolean);
 
+/** Normalize for comparison (no trailing slash, lowercased). */
+const normalizeOrigin = (o) =>
+  String(o || '')
+    .trim()
+    .replace(/\/+$/, '')
+    .toLowerCase();
+
+/**
+ * Vercel env values may be hostname only or full URL — avoid `https://https://...`.
+ * Used only for CORS allow-lists.
+ */
+const httpsOriginFromEnv = (val) => {
+  const s = String(val || '').trim().replace(/\/+$/, '');
+  if (!s) return '';
+  if (/^https:\/\//i.test(s)) return s;
+  if (/^http:\/\//i.test(s)) return s.replace(/^http/i, 'https');
+  return `https://${s}`;
+};
+
 const vercelSystemOrigins = [
-  process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : '',
-  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '',
-]
-  .map((o) => o.trim())
-  .filter(Boolean);
+  httpsOriginFromEnv(process.env.VERCEL_PROJECT_PRODUCTION_URL),
+  httpsOriginFromEnv(process.env.VERCEL_URL),
+  ...(String(process.env.VERCEL_EXTRA_ORIGINS || '')
+    .split(',')
+    .map((o) => httpsOriginFromEnv(o))
+    .filter(Boolean)),
+].filter(Boolean);
 
 const vercelPreviewOk = () => {
   const v = (process.env.ALLOW_VERCEL_PREVIEW_ORIGINS || '').toLowerCase();
@@ -72,11 +93,13 @@ function corsOriginDelegate(incoming, cb) {
     return cb(null, false);
   }
 
-  if (allowedOrigins.includes(incoming)) {
+  const inc = normalizeOrigin(incoming);
+
+  if (allowedOrigins.some((o) => normalizeOrigin(httpsOriginFromEnv(o)) === inc)) {
     return cb(null, incoming);
   }
 
-  if (vercelSystemOrigins.includes(incoming)) {
+  if (vercelSystemOrigins.some((o) => normalizeOrigin(o) === inc)) {
     return cb(null, incoming);
   }
 
@@ -84,7 +107,9 @@ function corsOriginDelegate(incoming, cb) {
     return cb(null, incoming);
   }
 
-  cb(new Error(`CORS: origin '${incoming}' is not allowed`));
+  // Never pass an Error into cors — it becomes next(err) and surfaces as HTTP 500.
+  console.warn(`[CORS] origin not allowed: ${incoming}`);
+  return cb(null, false);
 }
 
 app.use(cors({
