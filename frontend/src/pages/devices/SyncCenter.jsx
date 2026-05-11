@@ -43,6 +43,19 @@ function extractErrorText(err, fallback) {
   return fallback;
 }
 
+/** رسائل واضحة للموظفين بدل مصطلحات السيرفر (Vercel / LOCAL_AGENT_URL / …). */
+function humanizeDeviceListError(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return raw;
+  if (/LOCAL_AGENT_URL|127\.0\.0\.1|localhost|loopback|Vercel|tunnel|نفق/i.test(s)) {
+    return 'لا يصل الخادم إلى جهاز البصمة مباشرة. شغّل برنامج المكتب على حاسوب في نفس شبكة الجهاز، أو اطلب من مسؤول النظام ضبط الربط.';
+  }
+  if (/AGENT_RELAY|LOCAL_AGENT_NOT_CONFIGURED|AGENT_RELAY_NOT_CONFIGURED|VITE_AGENT_ID/i.test(s)) {
+    return 'ربط المكتب بجهاز البصمة غير مكتمل. راجع مسؤول النظام أو الدعم الفني.';
+  }
+  return raw;
+}
+
 function ProgressBar({ value, color }) {
   return (
     <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
@@ -142,7 +155,9 @@ export default function SyncCenter() {
       setDeviceZkUsers(rows);
     } catch (e) {
       setDeviceZkUsers([]);
-      setDeviceUsersError(extractErrorText(e, 'تعذّر قراءة مستخدمي الجهاز'));
+      setDeviceUsersError(
+        humanizeDeviceListError(extractErrorText(e, 'تعذّر قراءة قائمة مستخدمي جهاز البصمة. تحقق من التشغيل والشبكة.')),
+      );
     } finally {
       setDeviceUsersLoading(false);
     }
@@ -694,7 +709,7 @@ export default function SyncCenter() {
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <div>
                 <h3 className="font-semibold text-gray-800">
-                  مستخدمون على الجهاز — {pickerDevice.name}
+                  مستخدمو جهاز البصمة — {pickerDevice.name}
                 </h3>
                 <div className="mt-2 flex flex-wrap items-stretch gap-2">
                   <button
@@ -708,7 +723,7 @@ export default function SyncCenter() {
                       || zkPrivBulkBusy
                     }
                     onClick={clearAllZkElevatedPrivileges}
-                    title="يفك قفل الشاشة أولاً ثم يلغي صلاحية المدير/المدير الأعلى (بروتوكول ZK) لكل من في القائمة"
+                    title="إلغاء صلاحية المدير على الجهاز للجميع في القائمة"
                   >
                     {zkPrivBulkBusy ? (
                       <>
@@ -730,18 +745,14 @@ export default function SyncCenter() {
                     className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 disabled:opacity-40"
                     disabled={deviceUsersLoading || !!deviceUsersError || zkPrivBusyUid != null || zkPrivBulkBusy}
                     onClick={unlockZkScreenOnly}
-                    title="أمر ZK تفعيل الجهاز فقط — إن بقيت الشاشة «مقفولة» بعد سحب بصمات أو إلغاء صلاحيات"
+                    title="فتح شاشة الجهاز إذا كانت مقفولة"
                   >
                     <span className="material-icons-round text-base">lock_open</span>
                     فك قفل الشاشة
                   </button>
-                  <p className="text-[10px] text-gray-500 self-center max-w-[200px] leading-snug">
-                    زر البرتقالي يفك القفل ثم يلغي صلاحية المدير على الجهاز (البايت 6 أو 14 = مستوى مدير بتنسيق ZK). «فك القفل» لوحده دون تعديل مستخدمين.
-                  </p>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  قائمة حقيقية من بروتوكول ZK. عند الاستيراد: يُنشأ موظف جديد أو يُحدَّث الاسم إن وُجد نفس رقم البصمة/البطاقة في النظام.
-                  يمكن أيضاً تعديل صلاحية صف واحد من الأزرار على اليمين.
+                <p className="text-xs text-gray-600 mt-2 leading-relaxed">
+                  اختر الأسماء ثم اضغط «استيراد» لإضافتهم كموظفين أو تحديث بياناتهم إن وُجد الرقم مسبقاً.
                 </p>
                 <label className="mt-2 flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
                   <input
@@ -749,7 +760,7 @@ export default function SyncCenter() {
                     checked={hideDupZkNames}
                     onChange={(e) => setHideDupZkNames(e.target.checked)}
                   />
-                  إخفاء الاسم المكرر (إظهار أصغر UID فقط لكل اسم متطابق)
+                  إخفاء الأسماء المكررة في القائمة
                 </label>
                 {canRevealZkPin ? (
                   <label className="mt-2 flex items-center gap-2 text-xs text-amber-900 cursor-pointer select-none">
@@ -762,20 +773,20 @@ export default function SyncCenter() {
                         if (pickerDevice) loadDeviceZkUsers(pickerDevice.id, v);
                       }}
                     />
-                    سحب/عرض رمز الجهاز (PIN) — اختياري؛ لا يُحفظ في ملف الموظف
+                    عرض رمز الدخول على الجهاز (لا يُحفظ مع ملف الموظف)
                   </label>
                 ) : (
                   <p className="mt-2 text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 leading-relaxed">
-                    إظهار رمز PIN على الجهاز غير مفعّل لشركتك. يفعّله <strong>السوبر أدمن</strong> من شركات النظام ← خصائص العقد ← «عرض رمز جهاز البصمة (PIN)»، ثم أعد تسجيل الدخول أو حدّث الصفحة.
+                    عرض رمز الدخول على الجهاز غير مفعّل. يمكن لمسؤول النظام تفعيله من إعدادات الشركة ثم إعادة فتح هذه الصفحة.
                   </p>
                 )}
                 <div className="mt-2">
-                  <label className="label text-xs">Comm Key للجهاز (اختياري)</label>
+                  <label className="label text-xs">مفتاح الاتصال بالجهاز (إن وُجد)</label>
                   <input
                     className="input font-mono text-xs"
                     value={zkCommKey}
                     onChange={(e) => setZkCommKey(e.target.value)}
-                    placeholder="مثال: 12345"
+                    placeholder="اتركه فارغاً إن لم يُطلب منك"
                   />
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -848,14 +859,14 @@ export default function SyncCenter() {
                         )}
                         <span
                           className={`flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${priv.cls}`}
-                          title={`صلاحية ZK: بايت ${priv.raw} (0x${Number(priv.raw ?? 0).toString(16)}) — مستوى P2P1P0=${priv.level}`}
+                          title="نوع الصلاحية على جهاز البصمة"
                         >
                           {priv.text}
                         </span>
                       </span>
                     </div>
                     {canRevealZkPin && includeZkPassword && (
-                      <span className="flex-shrink-0 text-xs font-mono text-amber-900 tabular-nums" title="PIN على الجهاز">
+                      <span className="flex-shrink-0 text-xs font-mono text-amber-900 tabular-nums" title="رمز الدخول المعروض على الجهاز">
                         {pinDisp || '—'}
                       </span>
                     )}
@@ -864,7 +875,7 @@ export default function SyncCenter() {
                         type="button"
                         className="text-[10px] font-bold px-2 py-1 rounded border border-violet-200 text-violet-800 hover:bg-violet-50 disabled:opacity-40"
                         disabled={busy || rowPrivLocked || isDeviceAdmin}
-                        title="تعيين كمدير أعلى على الجهاز (بروتوكول ZK)"
+                        title="جعل هذا المستخدم مديراً على الجهاز"
                         onClick={() => applyZkDevicePrivilege(uid, true)}
                       >
                         {busy ? '…' : 'تفعيل مدير'}
@@ -873,7 +884,7 @@ export default function SyncCenter() {
                         type="button"
                         className="text-[10px] font-bold px-2 py-1 rounded border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40"
                         disabled={busy || rowPrivLocked || isNormalUser}
-                        title="إلغاء صلاحية المدير على الجهاز (مستوى عادي)"
+                        title="إلغاء صلاحية المدير لهذا المستخدم على الجهاز"
                         onClick={() => applyZkDevicePrivilege(uid, false)}
                       >
                         {busy ? '…' : 'إلغاء مدير'}
