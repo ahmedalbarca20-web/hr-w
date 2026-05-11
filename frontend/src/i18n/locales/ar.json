@@ -36,7 +36,16 @@
     "password":     "كلمة المرور",
     "login_button": "دخول",
     "login_hint":   "أدخل بياناتك للمتابعة",
-    "invalid_creds":"بيانات غير صحيحة"
+    "invalid_creds":"بيانات غير صحيحة",
+    "company_login": "دخول الشركة",
+    "employee_login": "دخول الموظف",
+    "company_code": "رمز الشركة",
+    "employee_code": "رقم الموظف / البصمة",
+    "login_company_button": "دخول الشركة",
+    "login_employee_button": "دخول الموظف",
+    "hide_password": "إخفاء الرمز",
+    "show_password": "مشاهدة الرمز",
+    "employee_portal_hint": "بعد أن تستورد شركتك الموظفين من جهاز البصمة، سجّل الدخول برقمك المعروض على الجهاز، ورمز الشركة، وكلمة المرور الافتراضية ({{defaultPassword}}) حتى يغيّرها المسؤول من «المستخدمون»."
   },
   "dashboard": {
     "welcome":       "مرحباً",

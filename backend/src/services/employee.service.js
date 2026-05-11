@@ -14,10 +14,17 @@
 
 const crypto       = require('crypto');
 const { Op }       = require('sequelize');
-const { Employee, Department, WorkShift } = require('../models/index');
+const { Employee, Department, WorkShift, User, Role } = require('../models/index');
 const { sequelize } = require('../config/db');
 const { paginate, paginateResult } = require('../utils/pagination');
 const { ymdInTimeZone, DEFAULT_IANA } = require('../utils/timezone');
+const { hashPassword } = require('../utils/hash');
+
+/** Password for auto-created employee portal accounts after ZK/device import. Admin can change it under Users. */
+const DEFAULT_EMPLOYEE_PORTAL_PASSWORD = () => {
+  const raw = String(process.env.EMPLOYEE_DEFAULT_PASSWORD || '11223344').trim();
+  return raw || '11223344';
+};
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
@@ -231,6 +238,42 @@ const softDelete = async (id, company_id) => {
   await employee.update({ deleted_at: new Date() });
 };
 
+/**
+ * After importing/creating an employee from a biometric device row, ensure they can log in
+ * at Employee login: employee_number + company code + default password (until admin changes it).
+ */
+async function ensurePortalUserAfterZkImport(company_id, employee) {
+  if (!employee?.id) return null;
+  try {
+    const linked = await User.findOne({ where: { employee_id: employee.id, company_id } });
+    if (linked) return linked;
+
+    const empRole = await Role.findOne({ where: { company_id, name: 'EMPLOYEE' } });
+    if (!empRole) {
+      console.warn(`[employee] EMPLOYEE role missing for company ${company_id}; skip portal user`);
+      return null;
+    }
+
+    const email = `emp.${company_id}.${employee.id}@internal.hr`.toLowerCase();
+    const emailTaken = await User.findOne({ where: { email } });
+    if (emailTaken) return emailTaken;
+
+    const password_hash = await hashPassword(DEFAULT_EMPLOYEE_PORTAL_PASSWORD());
+
+    return await User.create({
+      company_id,
+      employee_id : employee.id,
+      role_id     : empRole.id,
+      email,
+      password_hash,
+      is_active   : 1,
+    });
+  } catch (e) {
+    console.warn('[employee] ensurePortalUserAfterZkImport:', e?.message || e);
+    return null;
+  }
+}
+
 /** Map ZK `getUsers()` row → employee_number + display names (cardno / userId / uid). */
 function buildPayloadFromZkUser(u) {
   const userId = String(u.userId != null ? u.userId : '').trim();
@@ -273,6 +316,7 @@ async function upsertFromZkUser(company_id, u) {
       first_name_ar : payload.first_name_ar,
       last_name_ar  : payload.last_name_ar,
     });
+    await ensurePortalUserAfterZkImport(company_id, existing);
     return {
       action          : 'updated',
       employee_id     : existing.id,
@@ -281,6 +325,7 @@ async function upsertFromZkUser(company_id, u) {
     };
   }
   const row = await create(company_id, payload);
+  await ensurePortalUserAfterZkImport(company_id, row);
   return {
     action          : 'created',
     employee_id     : row.id,

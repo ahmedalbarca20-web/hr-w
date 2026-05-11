@@ -17,6 +17,9 @@ export default function Login({ initialMode = 'company' }) {
   const [mode, setMode] = useState(initialMode);
   const [showPassword, setShowPassword] = useState(false);
 
+  /** Shown in employee-login hint; match backend EMPLOYEE_DEFAULT_PASSWORD when set. */
+  const defaultEmployeePwdHint = String(import.meta.env.VITE_EMPLOYEE_DEFAULT_PASSWORD || '11223344').trim() || '11223344';
+
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm();
 
   const onSubmit = async (form) => {
@@ -67,7 +70,7 @@ export default function Login({ initialMode = 'company' }) {
                   : 'text-gray-500 hover:text-gray-700',
               )}
             >
-              {t('auth.company_login', 'دخول الشركة')}
+              {t('auth.company_login')}
             </button>
             <button
               type="button"
@@ -79,11 +82,11 @@ export default function Login({ initialMode = 'company' }) {
                   : 'text-gray-500 hover:text-gray-700',
               )}
             >
-              {t('auth.employee_login', 'دخول الموظف')}
+              {t('auth.employee_login')}
             </button>
           </div>
             <div>
-              <label className="label">{t('auth.company_code', 'رمز الشركة')}</label>
+              <label className="label">{t('auth.company_code')}</label>
               <input
                 type="text"
                 autoComplete="organization"
@@ -122,7 +125,7 @@ export default function Login({ initialMode = 'company' }) {
               </div>
             ) : (
               <div>
-                <label className="label">{t('auth.employee_code', 'رمز الموظف')}</label>
+                <label className="label">{t('auth.employee_code')}</label>
                 <div className="relative">
                   <span
                     className="material-icons-round pointer-events-none absolute start-3 top-1/2
@@ -170,8 +173,8 @@ export default function Login({ initialMode = 'company' }) {
                   type="button"
                   onClick={() => setShowPassword((p) => !p)}
                   className="absolute end-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  aria-label={showPassword ? t('auth.hide_password', 'إخفاء الرمز') : t('auth.show_password', 'مشاهدة الرمز')}
-                  title={showPassword ? t('auth.hide_password', 'إخفاء الرمز') : t('auth.show_password', 'مشاهدة الرمز')}
+                  aria-label={showPassword ? t('auth.hide_password') : t('auth.show_password')}
+                  title={showPassword ? t('auth.hide_password') : t('auth.show_password')}
                 >
                   <span className="material-icons-round text-xl">
                     {showPassword ? 'visibility_off' : 'visibility'}
@@ -183,6 +186,12 @@ export default function Login({ initialMode = 'company' }) {
               )}
             </div>
 
+            {mode === 'employee' && (
+              <p className="text-xs text-gray-600 leading-relaxed bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
+                {t('auth.employee_portal_hint', { defaultPassword: defaultEmployeePwdHint })}
+              </p>
+            )}
+
           <Button
             type="submit"
             variant="primary"
@@ -190,8 +199,8 @@ export default function Login({ initialMode = 'company' }) {
             className="w-full justify-center py-2.5"
           >
             {mode === 'company'
-              ? t('auth.login_company_button', 'دخول الشركة')
-              : t('auth.login_employee_button', 'دخول الموظف')}
+              ? t('auth.login_company_button')
+              : t('auth.login_employee_button')}
           </Button>
         </form>
       </div>

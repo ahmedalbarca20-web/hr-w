@@ -36,7 +36,16 @@
     "password":     "Password",
     "login_button": "Sign In",
     "login_hint":   "Enter your credentials to continue",
-    "invalid_creds":"Invalid credentials"
+    "invalid_creds":"Invalid credentials",
+    "company_login": "Company login",
+    "employee_login": "Employee login",
+    "company_code": "Company code",
+    "employee_code": "Employee / fingerprint number",
+    "login_company_button": "Sign in to company",
+    "login_employee_button": "Sign in as employee",
+    "hide_password": "Hide password",
+    "show_password": "Show password",
+    "employee_portal_hint": "After your company imports people from the attendance device, sign in with your number on the device, the company code, and the default password ({{defaultPassword}}) until the admin changes it in Users."
   },
   "dashboard": {
     "welcome":       "Welcome back",
