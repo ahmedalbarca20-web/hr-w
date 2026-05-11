@@ -19,6 +19,38 @@ const notFound  = (id) => Object.assign(new Error(`User ${id} not found`), { sta
 const conflict  = (msg) => Object.assign(new Error(msg), { statusCode: 409, code: 'CONFLICT' });
 const badReq    = (msg) => Object.assign(new Error(msg), { statusCode: 400, code: 'VALIDATION_ERROR' });
 
+/** Same templates as company creation — keep in sync with routes/company.routes.js */
+const COMPANY_ROLE_TEMPLATES = [
+  { name: 'ADMIN', name_ar: 'مدير النظام', permissions: ['*'] },
+  { name: 'HR', name_ar: 'الموارد البشرية', permissions: ['employees:*', 'attendance:*', 'leaves:*', 'payroll:read'] },
+  { name: 'EMPLOYEE', name_ar: 'موظف', permissions: ['profile:read', 'leaves:request', 'attendance:self'] },
+];
+
+/**
+ * Ensures ADMIN / HR / EMPLOYEE exist for this tenant (fixes DBs that only had SUPER_ADMIN per company).
+ */
+async function ensureDefaultRolesForCompany(company_id) {
+  if (!company_id) return;
+  for (const r of COMPANY_ROLE_TEMPLATES) {
+    await Role.findOrCreate({
+      where: { company_id, name: r.name },
+      defaults: {
+        company_id,
+        name: r.name,
+        name_ar: r.name_ar,
+        permissions: r.permissions,
+        is_system: 1,
+      },
+    });
+  }
+}
+
+function assertNotAssigningSuperAdminRole(role) {
+  if (role && String(role.name).toUpperCase() === 'SUPER_ADMIN') {
+    throw badReq('SUPER_ADMIN role cannot be assigned to company users');
+  }
+}
+
 async function assertEmailNotCompanyContact(company_id, email, currentUserId = null) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   if (!normalizedEmail) return;
@@ -59,11 +91,17 @@ async function list(company_id, { page = 1, limit = 20, is_active, search } = {}
 }
 
 async function listRoles(company_id) {
-  return Role.findAll({
-    where: { company_id },
+  await ensureDefaultRolesForCompany(company_id);
+  const rows = await Role.findAll({
+    where: {
+      company_id,
+      name: { [Op.ne]: 'SUPER_ADMIN' },
+    },
     attributes: ['id', 'name', 'name_ar'],
     order: [['id', 'ASC']],
   });
+  const rank = { ADMIN: 1, HR: 2, EMPLOYEE: 3 };
+  return [...rows].sort((a, b) => (rank[a.name] ?? 99) - (rank[b.name] ?? 99));
 }
 
 // ── Get one ──────────────────────────────────────────────────────────────────
@@ -99,6 +137,7 @@ async function create(company_id, data) {
   // Validate role belongs to company
   const role = await Role.findOne({ where: { id: data.role_id, company_id } });
   if (!role) throw badReq('Role not found in this company');
+  assertNotAssigningSuperAdminRole(role);
 
   // Validate employee if provided
   if (data.employee_id) {
@@ -177,6 +216,7 @@ async function update(id, company_id, data) {
   if (data.role_id) {
     const role = await Role.findOne({ where: { id: data.role_id, company_id } });
     if (!role) throw badReq('Role not found in this company');
+    assertNotAssigningSuperAdminRole(role);
   }
   if (data.employee_id !== undefined) {
     if (data.employee_id === null) {
