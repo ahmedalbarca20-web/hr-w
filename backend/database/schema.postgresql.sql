@@ -269,6 +269,8 @@ CREATE TABLE company_features (
   company_id   INTEGER NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
   feature_key  VARCHAR(60) NOT NULL,
   is_enabled   SMALLINT NOT NULL DEFAULT 1 CHECK (is_enabled IN (0,1)),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT uq_company_feature UNIQUE (company_id, feature_key)
 );
 

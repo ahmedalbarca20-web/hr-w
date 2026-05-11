@@ -268,8 +268,9 @@ const connectDB = async () => {
   };
 
   const ensureCompanyFeaturesTable = async () => {
+    let cols;
     try {
-      await qi.describeTable('company_features');
+      cols = await qi.describeTable('company_features');
     } catch {
       await qi.createTable('company_features', {
         id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, autoIncrement: true, primaryKey: true },
@@ -283,6 +284,22 @@ const connectDB = async () => {
       await qi.addIndex('company_features', ['company_id', 'feature_key'], {
         unique: true,
         name: 'company_features_company_feature_uq',
+      });
+      return;
+    }
+    // Existing installs (e.g. schema.postgresql.sql) often omit timestamps — Sequelize models expect them.
+    if (!cols.created_at) {
+      await qi.addColumn('company_features', 'created_at', {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: sequelize.literal('CURRENT_TIMESTAMP'),
+      });
+    }
+    if (!cols.updated_at) {
+      await qi.addColumn('company_features', 'updated_at', {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: sequelize.literal('CURRENT_TIMESTAMP'),
       });
     }
   };
