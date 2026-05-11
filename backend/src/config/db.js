@@ -132,6 +132,8 @@ if (dialect === 'sqlite') {
 const connectDB = async () => {
   await sequelize.authenticate();
   const qi = sequelize.getQueryInterface();
+  /** Postgres has no TINYINT — use SMALLINT for 0/1 column flags. */
+  const tinyintFlag = () => (dialect === 'postgres' ? DataTypes.SMALLINT : DataTypes.TINYINT);
   const ensureSurpriseAttendanceTable = async () => {
     try {
       await qi.describeTable('surprise_attendance_events');
@@ -160,7 +162,7 @@ const connectDB = async () => {
       return;
     }
     if (!cols.is_surprise) {
-      await qi.addColumn('device_logs', 'is_surprise', { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 });
+      await qi.addColumn('device_logs', 'is_surprise', { type: tinyintFlag(), allowNull: false, defaultValue: 0 });
     }
     if (!cols.surprise_event_id) {
       await qi.addColumn('device_logs', 'surprise_event_id', { type: DataTypes.INTEGER.UNSIGNED, allowNull: true });
@@ -174,7 +176,7 @@ const connectDB = async () => {
       return;
     }
     if (!cols.is_surprise) {
-      await qi.addColumn('attendance', 'is_surprise', { type: DataTypes.TINYINT, allowNull: false, defaultValue: 0 });
+      await qi.addColumn('attendance', 'is_surprise', { type: tinyintFlag(), allowNull: false, defaultValue: 0 });
     }
     if (!cols.surprise_event_id) {
       await qi.addColumn('attendance', 'surprise_event_id', { type: DataTypes.INTEGER.UNSIGNED, allowNull: true });
@@ -273,7 +275,7 @@ const connectDB = async () => {
         id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, autoIncrement: true, primaryKey: true },
         company_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
         feature_key: { type: DataTypes.STRING(60), allowNull: false },
-        is_enabled: { type: DataTypes.TINYINT, allowNull: false, defaultValue: 1 },
+        is_enabled: { type: tinyintFlag(), allowNull: false, defaultValue: 1 },
         created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal('CURRENT_TIMESTAMP') },
         updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: sequelize.literal('CURRENT_TIMESTAMP') },
       });
@@ -379,7 +381,7 @@ const connectDB = async () => {
     }
     if (!cols.onboarding_last_step) {
       await qi.addColumn('companies', 'onboarding_last_step', {
-        type: DataTypes.TINYINT,
+        type: tinyintFlag(),
         allowNull: false,
         defaultValue: 0,
       });

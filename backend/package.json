@@ -13,6 +13,7 @@
     "seed:super-admin-reset": "node database/reset-super-admin-password.js",
     "seed:demo": "node database/seed.demo-employees.js",
     "init:sqlite": "node database/init-sqlite.js",
+    "db:sync": "node scripts/sync-database.js",
     "bridge:zk-lan": "node zk-lan-bridge/server.js",
     "device:set-ip": "node scripts/set-device-lan-ip.js",
     "verify:iconv": "node scripts/verify-iconv-lite.js",
