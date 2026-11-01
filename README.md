@@ -28,8 +28,24 @@ Bilingual (Arabic / English) HR system built with **Node.js + Express + React + 
 # 1. Copy env files
 cp backend/.env.example  backend/.env
 cp frontend/.env.example frontend/.env
+cp local-agent/.env.example local-agent/.env
 
-# 2. Start all services
+# 2. Install local-agent dependencies (frontend/backend are npm workspaces)
+npm install --prefix local-agent
+
+# 3. Start all services (API, frontend, and local ZK agent)
+npm run dev:all
+```
+
+The local API is available at `http://localhost:5000`, the frontend at
+`http://localhost:3000`, and the ZK agent health check at
+`http://127.0.0.1:8099/health`. For local device relay, set `LOCAL_AGENT_URL`
+and `LOCAL_AGENT_TOKEN` in `backend/.env`; the token must match
+`LOCAL_AGENT_TOKEN` in `local-agent/.env`. The agent can run without cloud
+polling when `CLOUD_API_BASE_URL` is empty.
+
+Alternatively, start the containerized services:
+```bash
 docker compose up --build
 
 # Backend  → http://localhost:5000

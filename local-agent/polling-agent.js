@@ -34,6 +34,9 @@ const POLL_INTERVAL_MS = Number.isFinite(Number(CFG.POLL_INTERVAL_MS)) ? Number(
 const HEARTBEAT_INTERVAL_MS = Number.isFinite(Number(CFG.HEARTBEAT_INTERVAL_MS)) ? Number(CFG.HEARTBEAT_INTERVAL_MS) : 60000;
 const PENDING_RESULTS_FILE = path.join(CFG.configDir || DEFAULT_WIN_CONFIG_DIR, 'pending-job-results.json');
 
+// LOCAL_ONLY mode: disable cloud polling when CLOUD_API_BASE_URL is not set
+const LOCAL_ONLY_MODE = !API_BASE_URL;
+
 const pkg = (() => {
   try {
     return JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
@@ -42,13 +45,13 @@ const pkg = (() => {
   }
 })();
 
-if (!API_BASE_URL) {
-  throw new Error('CLOUD_API_BASE_URL (or config.json backend_url) is required');
+if (!LOCAL_ONLY_MODE && !API_BASE_URL) {
+  throw new Error('CLOUD_API_BASE_URL (or config.json backend_url) is required for cloud polling mode');
 }
-if (!AGENT_ID) {
-  throw new Error('AGENT_ID (or config.json agent_id) is required');
+if (!LOCAL_ONLY_MODE && !AGENT_ID) {
+  throw new Error('AGENT_ID (or config.json agent_id) is required for cloud polling mode');
 }
-if (!AGENT_SHARED_TOKEN) {
+if (!LOCAL_ONLY_MODE && !AGENT_SHARED_TOKEN) {
   throw new Error('AGENT_SHARED_TOKEN is required to authenticate against cloud API');
 }
 
@@ -349,6 +352,20 @@ function startAutoEnqueueIfConfigured() {
 }
 
 async function loop() {
+  if (LOCAL_ONLY_MODE) {
+    log('local_only_mode', {
+      message: 'Cloud polling disabled. Running as local relay only.',
+      port: PORT,
+    });
+    agentLog('INFO', 'Local-only mode', { port: PORT });
+    // Keep the process alive but don't poll
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(60000);
+    }
+  }
+
   log('poller_started', {
     agent_id: AGENT_ID,
     api: API_BASE_URL,

@@ -26,10 +26,10 @@ app.use(express.json({ limit: '1mb' }));
 
 const PORT = Number(process.env.LOCAL_AGENT_PORT || 8099);
 const TOKEN = String(process.env.LOCAL_AGENT_TOKEN || '').trim();
-/** Default HTTP probe budget (LAN); capped by MAX_PROBE_TIMEOUT_MS below. */
-const DEFAULT_TIMEOUT_MS = 4000;
-/** LAN HTTP probe must be allowed to exceed 1s — many ZK panels respond slowly or after Wi‑Fi jitter. */
-const MAX_PROBE_TIMEOUT_MS = 15000;
+/** Default HTTP probe budget (LAN) for quick device connectivity checks. */
+const DEFAULT_TIMEOUT_MS = 7000;
+/** Keep the device connection test fast and predictable at ~7 seconds. */
+const MAX_PROBE_TIMEOUT_MS = 7000;
 
 if (!TOKEN) {
   // Run in permissive localhost-only mode when no token is provided.

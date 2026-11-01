@@ -654,8 +654,8 @@ async function syncDeviceUsers(device_id, company_id, employee_ids = []) {
 // PROBE CONNECTION (HTTP to device LAN — ZKTeco / similar web panels)
 // ════════════════════════════════════════════════════════════════════════════
 
-const PROBE_TIMEOUT_MS = 3200;
-const PROBE_QUICK_TIMEOUT_MS = 1400;
+const PROBE_TIMEOUT_MS = 7000;
+const PROBE_QUICK_TIMEOUT_MS = 7000;
 const PROBE_MAX_BODY   = 200 * 1024;
 
 function httpGetText(targetUrl, timeoutMs = PROBE_TIMEOUT_MS) {
@@ -2062,8 +2062,8 @@ async function probeDeviceViaAgentGateway(body) {
   const device_ip = String(body?.device_ip || body?.ip_address || '').trim();
   const isVercel = process.env.VERCEL === '1';
   const timeout_ms = isVercel
-    ? Math.min(1000, Math.max(200, Number(body?.timeout_ms) || 800))
-    : Math.min(15000, Math.max(200, Number(body?.timeout_ms) || 4000));
+    ? Math.min(7000, Math.max(200, Number(body?.timeout_ms) || 7000))
+    : Math.min(7000, Math.max(200, Number(body?.timeout_ms) || 7000));
 
   if (!device_ip) {
     const err = new Error('device_ip is required');

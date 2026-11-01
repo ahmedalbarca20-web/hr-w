@@ -12,8 +12,8 @@ self.addEventListener('push', (event) => {
   const tag = typeof data.tag === 'string' && data.tag ? data.tag : 'hr';
   const options = {
     body: payload.body || '',
-    icon: '/favicon.ico',
-    badge: '/favicon.ico',
+    icon: '/logo.svg',
+    badge: '/logo.svg',
     tag,
     renotify: true,
     data: { url },

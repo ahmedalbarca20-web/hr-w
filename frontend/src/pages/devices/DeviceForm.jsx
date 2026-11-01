@@ -173,7 +173,7 @@ export default function DeviceForm() {
           let res = await probeLocalAgent({
             device_ip: form.ip_address.trim(),
             comm_key: form.comm_key?.trim() || undefined,
-            timeout_ms: 8000,
+            timeout_ms: 7000,
           });
           if (res?.status === 200 && res.data?.ok) {
             const nextSerial = res.data.serial_number || form.serial_number || makeFallbackSerial(form.ip_address);
@@ -190,7 +190,7 @@ export default function DeviceForm() {
             minimal_probe: true,
             include_users: false,
             include_attendance_size: false,
-            socket_timeout_ms: 8000,
+            socket_timeout_ms: 7000,
           });
           if (res?.status === 200 && res.data?.ok) {
             if (applyZkSnapshotToForm(setForm, res.data)) {
@@ -222,7 +222,7 @@ export default function DeviceForm() {
         const agentRes = await probeDeviceViaAgent({
           device_ip: form.ip_address.trim(),
           comm_key: form.comm_key?.trim() || undefined,
-          timeout_ms: 8000,
+          timeout_ms: 7000,
         });
         const agentPayload = unwrapZkPayload(agentRes);
         if (agentPayload?.ok) {
@@ -286,7 +286,7 @@ export default function DeviceForm() {
         minimal_probe: true,
         include_users: false,
         include_attendance_size: false,
-        socket_timeout_ms: 4000,
+        socket_timeout_ms: 7000,
       });
       let z = unwrapZkPayload(zkRes);
 

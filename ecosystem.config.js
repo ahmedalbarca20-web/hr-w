@@ -32,5 +32,26 @@ module.exports = {
       merge_logs  : true,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
+    {
+      name        : 'zk-agent',
+      // For local-only mode: runs as server relay without cloud polling
+      script      : path.join(root, 'local-agent', 'polling-agent.js'),
+      cwd         : path.join(root, 'local-agent'),
+      watch       : false,
+      instances   : 1,
+      exec_mode   : 'fork',
+      autorestart : true,
+      min_uptime  : '10s',
+      max_restarts: 50,
+      restart_delay: 4000,
+      env: {
+        NODE_ENV : 'production',
+        // Leave CLOUD_API_BASE_URL empty for local-only mode
+      },
+      error_file  : path.join(root, 'backend', 'logs', 'pm2-agent-error.log'),
+      out_file    : path.join(root, 'backend', 'logs', 'pm2-agent-out.log'),
+      merge_logs  : true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    },
   ],
 };
