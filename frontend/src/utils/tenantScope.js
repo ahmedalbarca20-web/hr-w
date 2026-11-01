@@ -20,10 +20,15 @@ export function isSuperAdminUser(user) {
  */
 export function getActiveTenantCompanyId(user) {
   if (!user) return null;
-  const n = Number(user.company_id);
-  if (Number.isInteger(n) && n > 0) return n;
-  if (!isSuperAdminUser(user)) return null;
-  if (typeof window === 'undefined') return null;
-  const ls = Number(localStorage.getItem(HR_ACTIVE_COMPANY_KEY));
-  return Number.isInteger(ls) && ls > 0 ? ls : null;
+  const isSuperAdmin = isSuperAdminUser(user);
+  if (!isSuperAdmin) {
+    const companyId = Number(user.company_id);
+    return Number.isInteger(companyId) && companyId > 0 ? companyId : null;
+  }
+  if (typeof window !== 'undefined') {
+    const active = Number(localStorage.getItem(HR_ACTIVE_COMPANY_KEY));
+    if (Number.isInteger(active) && active > 0) return active;
+  }
+  const companyId = Number(user.company_id);
+  return Number.isInteger(companyId) && companyId > 0 ? companyId : null;
 }

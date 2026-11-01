@@ -12,6 +12,7 @@ import {
 } from '../../api/attendance.api';
 import { useAuth } from '../../context/AuthContext';
 import { getResolvedApiBaseUrl } from '../../api/axios';
+import { getActiveTenantCompanyId } from '../../utils/tenantScope';
 
 export default function AttendanceList() {
   const { t }   = useTranslation();
@@ -37,7 +38,11 @@ export default function AttendanceList() {
   const openAttendanceRequestPhoto = useCallback(async (requestId) => {
     const token = localStorage.getItem('access_token');
     const base = getResolvedApiBaseUrl().replace(/\/$/, '');
-    const url = `${base}/attendance-requests/${requestId}/photo`;
+    const companyId = getActiveTenantCompanyId(user);
+    const params = new URLSearchParams();
+    if (companyId) params.set('company_id', String(companyId));
+    const query = params.toString();
+    const url = `${base}/attendance-requests/${requestId}/photo${query ? `?${query}` : ''}`;
     try {
       const res = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -55,7 +60,7 @@ export default function AttendanceList() {
     } catch {
       window.alert(t('attendance_request.photo_unavailable', 'الصورة غير متوفرة أو انتهت صلاحيتها'));
     }
-  }, [t]);
+  }, [t, user]);
 
   const refreshActiveSurprise = useCallback(async () => {
     if (!canActivateSurprise) return;
@@ -418,4 +423,3 @@ export default function AttendanceList() {
     </div>
   );
 }
-
