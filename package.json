@@ -3,7 +3,7 @@
   "private": true,
   "description": "Monorepo root: workspace includes frontend for Vercel (Vite from repo root).",
   "engines": {
-    "node": "20.x"
+    "node": "26.x"
   },
   "workspaces": [
     "frontend",

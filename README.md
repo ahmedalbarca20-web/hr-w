@@ -12,7 +12,7 @@ Bilingual (Arabic / English) HR system built with **Node.js + Express + React + 
     </tr>
   </thead>
   <tbody>
-    <tr><td>Backend</td><td>Node.js 20, Express 5, Sequelize</td></tr>
+    <tr><td>Backend</td><td>Node.js 26, Express 5, Sequelize</td></tr>
     <tr><td>Database</td><td>MariaDB 11</td></tr>
     <tr><td>Auth</td><td>JWT (Access + Refresh tokens)</td></tr>
     <tr><td>Frontend</td><td>React 18, Vite, React Router v6</td></tr>
